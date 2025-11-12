@@ -1,8 +1,9 @@
 import os
 import time
 import google.generativeai as genai
-from flask import Flask, jsonify, send_file
-import base64
+from flask import Flask, jsonify, send_file, request
+import requests
+import tempfile
 
 app = Flask(__name__)
 
@@ -10,14 +11,51 @@ app = Flask(__name__)
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 genai.configure(api_key=GOOGLE_API_KEY)
 
+# Video can be local file or URL
+VIDEO_PATH = os.environ.get('VIDEO_PATH', '/app/video.mp4')
+VIDEO_URL = os.environ.get('VIDEO_URL', '')
+
+def get_video_file():
+    """Get video file path, downloading from URL if necessary"""
+    
+    # If local file exists, use it
+    if os.path.exists(VIDEO_PATH):
+        print(f"Using local video file: {VIDEO_PATH}")
+        return VIDEO_PATH
+    
+    # If VIDEO_URL is provided, download it
+    if VIDEO_URL:
+        print(f"Downloading video from URL: {VIDEO_URL}")
+        try:
+            response = requests.get(VIDEO_URL, stream=True)
+            response.raise_for_status()
+            
+            # Save to temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            for chunk in response.iter_content(chunk_size=8192):
+                temp_file.write(chunk)
+            temp_file.close()
+            
+            print(f"Video downloaded to: {temp_file.name}")
+            return temp_file.name
+        except Exception as e:
+            print(f"Error downloading video: {e}")
+            raise ValueError(f"Could not download video from URL: {VIDEO_URL}")
+    
+    # If no video available
+    raise ValueError("No video file found. Set VIDEO_PATH or VIDEO_URL environment variable.")
+
 def analyze_video():
     """Upload and analyze the video using Gemini 2.5-flash"""
     
     print("Starting video analysis...")
     
+    # Get video file
+    video_path = get_video_file()
+    
     # Upload the video file
     print("Uploading video to Gemini...")
-    video_file = genai.upload_file(path='/app/video.mp4', display_name="psychoanalysis_video")
+    video_file = genai.upload_file(path=video_path, display_name="psychoanalysis_video")
     
     print(f"Video uploaded: {video_file.uri}")
     
@@ -75,7 +113,14 @@ def home():
         return jsonify({
             "status": "ready",
             "message": "Video psychoanalysis service is running",
-            "endpoint": "/analyze"
+            "endpoints": {
+                "analyze": "/analyze",
+                "health": "/health"
+            },
+            "configuration": {
+                "video_path": VIDEO_PATH if os.path.exists(VIDEO_PATH) else "Not found",
+                "video_url": VIDEO_URL if VIDEO_URL else "Not set"
+            }
         })
 
 @app.route('/analyze')
@@ -94,7 +139,10 @@ def analyze():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "healthy"})
+    return jsonify({
+        "status": "healthy",
+        "video_available": os.path.exists(VIDEO_PATH) or bool(VIDEO_URL)
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
