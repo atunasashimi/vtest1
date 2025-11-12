@@ -4,6 +4,7 @@ import google.generativeai as genai
 from flask import Flask, jsonify, send_file, request
 import requests
 import tempfile
+import re
 
 app = Flask(__name__)
 
@@ -17,7 +18,7 @@ def download_video(video_url):
     print(f"Downloading video from URL: {video_url}")
     
     try:
-        response = requests.get(video_url, stream=True, timeout=300)
+        response = requests.get(video_url, stream=True, timeout=600)
         response.raise_for_status()
         
         # Save to temporary file
@@ -43,32 +44,107 @@ def download_video(video_url):
         print(f"Error downloading video: {e}")
         raise ValueError(f"Could not download video from URL: {video_url}. Error: {str(e)}")
 
-def transcribe_audio(video_file):
-    """Transcribe audio from the video"""
+def extract_last_timestamp(transcript):
+    """Extract the last timestamp from the transcript"""
+    # Look for patterns like [MM:SS] or [HH:MM:SS]
+    timestamps = re.findall(r'\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]', transcript)
+    if timestamps:
+        last = timestamps[-1]
+        if last[2]:  # HH:MM:SS format
+            return int(last[0]) * 3600 + int(last[1]) * 60 + int(last[2])
+        else:  # MM:SS format
+            return int(last[0]) * 60 + int(last[1])
+    return 0
+
+def transcribe_audio_complete(video_file):
+    """Get complete transcription using multiple passes if needed"""
     
-    print("Transcribing audio...")
+    print("Starting complete transcription process...")
     
-    # Create the model
-    model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp")
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash-exp",
+        generation_config={
+            "max_output_tokens": 8192,
+            "temperature": 0.1,
+        }
+    )
     
-    # Transcription prompt
-    transcript_prompt = """Please provide a complete, accurate transcription of all spoken audio in this video.
+    # First pass - get initial transcription
+    initial_prompt = """Provide a COMPLETE word-for-word transcription of ALL audio in this video.
+
+IMPORTANT: Transcribe the ENTIRE video from start to finish. Do not stop early.
 
 Format:
-- Include all dialogue and speech
-- Use speaker labels if multiple speakers (e.g., "Speaker 1:", "Speaker 2:")
-- Include [pause], [music], [sound effects] for non-speech audio where relevant
-- Preserve natural speech patterns including fillers (um, uh, etc.)
-- Use timestamps for longer videos if helpful
+[00:00] - Include timestamp every 30 seconds
+Speaker 1: Actual spoken words
+Speaker 2: Their response
+[00:30] Continue throughout
+[01:00] Keep going...
 
-Transcription:"""
+Include:
+- Every single word spoken
+- All speakers labeled
+- [pause], [music], [laughter], [background noise] when relevant
+- Continue ALL THE WAY to the end
 
-    # Generate transcript
-    response = model.generate_content([video_file, transcript_prompt])
+Start transcription now and continue until the video ends:"""
+
+    print("Pass 1: Getting initial transcription...")
+    response1 = model.generate_content([video_file, initial_prompt])
+    transcript = response1.text.strip()
     
-    transcript = response.text.strip()
-    print("Transcription complete")
+    last_time = extract_last_timestamp(transcript)
+    print(f"Pass 1 complete: {len(transcript)} chars, last timestamp: {last_time}s")
     
+    # Additional passes if needed
+    max_passes = 3
+    for pass_num in range(2, max_passes + 1):
+        # Check if we should continue
+        if last_time > 0 and last_time < 300:  # Less than 5 minutes might indicate incomplete
+            print(f"Pass {pass_num}: Requesting continuation from {last_time}s...")
+            
+            minutes = last_time // 60
+            seconds = last_time % 60
+            
+            continuation_prompt = f"""The transcription stopped at [{minutes:02d}:{seconds:02d}]. 
+
+Please continue transcribing from [{minutes:02d}:{seconds:02d}] onwards until the VERY END of the video.
+
+Include:
+- Start from [{minutes:02d}:{seconds:02d}]
+- Continue with all remaining audio
+- Maintain same format with timestamps
+- Do not repeat what was already transcribed
+- Continue until video ends
+
+Continue transcription:"""
+            
+            try:
+                response = model.generate_content([video_file, continuation_prompt])
+                continuation = response.text.strip()
+                
+                if len(continuation) > 100:
+                    print(f"Pass {pass_num}: Got {len(continuation)} additional chars")
+                    transcript += f"\n\n{continuation}"
+                    
+                    new_last_time = extract_last_timestamp(continuation)
+                    if new_last_time > last_time:
+                        last_time = new_last_time
+                        print(f"Updated last timestamp: {last_time}s")
+                    else:
+                        print("No progress in timestamp, stopping additional passes")
+                        break
+                else:
+                    print("Continuation seems complete")
+                    break
+                    
+            except Exception as e:
+                print(f"Error in pass {pass_num}: {e}")
+                break
+        else:
+            break
+    
+    print(f"Transcription complete: {len(transcript)} total characters")
     return transcript
 
 def analyze_video_content(video_file, transcript):
@@ -76,14 +152,25 @@ def analyze_video_content(video_file, transcript):
     
     print("Generating psychoanalytic analysis...")
     
-    # Create the model
-    model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp")
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash-exp",
+        generation_config={
+            "max_output_tokens": 8192,
+            "temperature": 0.7,
+        }
+    )
     
-    # Psychoanalytic prompt with transcript
+    # Truncate transcript if too long for analysis (keep full version for user)
+    transcript_for_analysis = transcript
+    if len(transcript) > 30000:
+        print(f"Transcript is very long ({len(transcript)} chars), using summary for analysis...")
+        # Keep beginning and end, summarize middle
+        transcript_for_analysis = transcript[:15000] + "\n\n[... middle section continues ...]\n\n" + transcript[-15000:]
+    
     prompt = f"""You have been provided with a video and its audio transcript below.
 
 AUDIO TRANSCRIPT:
-{transcript}
+{transcript_for_analysis}
 
 ---
 
@@ -107,11 +194,10 @@ Please provide a deep psychoanalytic analysis of this video, incorporating insig
 
 Please provide a comprehensive, nuanced analysis that draws on psychoanalytic theory while remaining grounded in what is actually observable in the video and audible in the transcript."""
 
-    # Generate analysis
     response = model.generate_content([video_file, prompt])
     
     analysis = response.text
-    print("Analysis complete")
+    print(f"Analysis complete: {len(analysis)} characters")
     
     return analysis
 
@@ -141,8 +227,8 @@ def process_video(video_url):
         
         print("Video processed successfully")
         
-        # Transcribe audio
-        transcript = transcribe_audio(video_file)
+        # Get complete transcription
+        transcript = transcribe_audio_complete(video_file)
         
         # Analyze video with transcript
         analysis = analyze_video_content(video_file, transcript)
@@ -153,7 +239,9 @@ def process_video(video_url):
         
         return {
             "transcript": transcript,
-            "analysis": analysis
+            "transcript_length": len(transcript),
+            "analysis": analysis,
+            "analysis_length": len(analysis)
         }
     
     finally:
@@ -164,7 +252,6 @@ def process_video(video_url):
 
 @app.route('/')
 def home():
-    # Serve the HTML interface
     try:
         return send_file('index.html')
     except:
@@ -180,7 +267,6 @@ def home():
 @app.route('/analyze', methods=['POST'])
 def analyze():
     try:
-        # Get video URL from request
         data = request.get_json()
         
         if not data or 'video_url' not in data:
@@ -191,21 +277,21 @@ def analyze():
         
         video_url = data['video_url']
         
-        # Validate URL
         if not video_url.startswith(('http://', 'https://')):
             return jsonify({
                 "status": "error",
                 "message": "Invalid URL. Must start with http:// or https://"
             }), 400
         
-        # Process video
         result = process_video(video_url)
         
         return jsonify({
             "status": "success",
             "video_url": video_url,
             "transcript": result["transcript"],
-            "analysis": result["analysis"]
+            "transcript_length": result["transcript_length"],
+            "analysis": result["analysis"],
+            "analysis_length": result["analysis_length"]
         })
         
     except Exception as e:
