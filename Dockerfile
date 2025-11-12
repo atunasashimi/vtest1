@@ -6,12 +6,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application
+# Copy the application files
 COPY gemini_video_analyzer.py .
 COPY index.html .
 
-# The video will be copied in the Railway build
-COPY video.mp4 .
+# No video file needed - all videos come from URLs!
 
 # Expose port
 EXPOSE 8080

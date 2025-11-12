@@ -63,6 +63,55 @@
         .info-box li {
             margin: 8px 0;
         }
+
+        .url-input-section {
+            background: linear-gradient(135deg, #667eea10 0%, #764ba210 100%);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            border: 2px solid #667eea30;
+        }
+
+        .url-input-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            min-width: 300px;
+            padding: 15px 20px;
+            font-size: 1em;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="text"]::placeholder {
+            color: #999;
+        }
+
+        .example-urls {
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .example-urls strong {
+            color: #667eea;
+        }
         
         button {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -72,13 +121,11 @@
             font-size: 1.2em;
             border-radius: 50px;
             cursor: pointer;
-            width: 100%;
-            margin: 20px 0;
             transition: transform 0.2s, box-shadow 0.2s;
             font-weight: bold;
         }
         
-        button:hover {
+        button:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
         }
@@ -212,6 +259,19 @@
             font-size: 0.9em;
             margin-top: 10px;
         }
+
+        .video-info {
+            background: #e8f4ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .video-info p {
+            margin: 5px 0;
+            color: #555;
+        }
     </style>
 </head>
 <body>
@@ -219,6 +279,25 @@
         <h1>🧠 Video Psychoanalysis</h1>
         <p class="subtitle">Powered by Google Gemini 2.5-flash</p>
         
+        <div class="url-input-section">
+            <h3>🔗 Enter Video URL</h3>
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    id="videoUrl" 
+                    placeholder="https://storage.googleapis.com/your-bucket/video.mp4"
+                    value=""
+                >
+                <button id="analyzeBtn" onclick="analyzeVideo()">
+                    🚀 Analyze
+                </button>
+            </div>
+            <div class="example-urls">
+                <strong>Supported:</strong> Google Cloud Storage, Dropbox (dl=1), direct MP4 URLs<br>
+                <strong>Example:</strong> https://storage.googleapis.com/bucket-name/video.mp4
+            </div>
+        </div>
+
         <div class="info-box">
             <h3>📊 Analysis Includes</h3>
             <ul>
@@ -268,28 +347,28 @@
         <div class="info-box">
             <h3>ℹ️ What to Expect</h3>
             <ul>
-                <li><strong>Processing Time:</strong> 90-180 seconds (includes transcription)</li>
+                <li><strong>Processing Time:</strong> 90-180 seconds (includes download, transcription, and analysis)</li>
                 <li><strong>Transcript:</strong> Complete audio transcription with speaker labels</li>
                 <li><strong>Analysis Length:</strong> 1,500-2,500 words</li>
                 <li><strong>Theoretical Approach:</strong> Multi-perspective (Freud, Jung, Lacan)</li>
             </ul>
         </div>
         
-        <button id="analyzeBtn" onclick="analyzeVideo()">
-            🚀 Start Psychoanalysis
-        </button>
-        
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <p>🤔 Processing video with Gemini 2.5-flash...</p>
             <p class="progress-text" id="progressText">
-                Step 1/3: Uploading and processing video...
+                Step 1/4: Downloading video...
             </p>
         </div>
         
         <div class="error" id="error"></div>
         
         <div class="result" id="result">
+            <div class="video-info">
+                <p><strong>📹 Analyzed Video:</strong> <span id="analyzedUrl"></span></p>
+            </div>
+
             <h2 class="section-title">🎤 Audio Transcript</h2>
             <div class="result-box transcript-box" id="transcriptText"></div>
             <button class="copy-btn" onclick="copyTranscript()">
@@ -309,13 +388,26 @@
     
     <script>
         async function analyzeVideo() {
+            const videoUrl = document.getElementById('videoUrl').value.trim();
             const analyzeBtn = document.getElementById('analyzeBtn');
             const loading = document.getElementById('loading');
             const result = document.getElementById('result');
             const error = document.getElementById('error');
             const transcriptText = document.getElementById('transcriptText');
             const analysisText = document.getElementById('analysisText');
+            const analyzedUrl = document.getElementById('analyzedUrl');
             const progressText = document.getElementById('progressText');
+            
+            // Validate URL
+            if (!videoUrl) {
+                alert('❌ Please enter a video URL');
+                return;
+            }
+            
+            if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
+                alert('❌ URL must start with http:// or https://');
+                return;
+            }
             
             // Reset UI
             analyzeBtn.disabled = true;
@@ -324,19 +416,34 @@
             error.classList.remove('active');
             
             // Simulate progress updates
-            setTimeout(() => {
-                progressText.textContent = 'Step 2/3: Transcribing audio...';
-            }, 15000);
+            const progressSteps = [
+                { time: 10000, text: 'Step 2/4: Uploading to Gemini...' },
+                { time: 30000, text: 'Step 3/4: Transcribing audio...' },
+                { time: 60000, text: 'Step 4/4: Generating psychoanalytic analysis...' }
+            ];
             
-            setTimeout(() => {
-                progressText.textContent = 'Step 3/3: Generating psychoanalytic analysis...';
-            }, 45000);
+            const progressTimers = progressSteps.map(step => 
+                setTimeout(() => {
+                    progressText.textContent = step.text;
+                }, step.time)
+            );
             
             try {
-                const response = await fetch('/analyze');
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ video_url: videoUrl })
+                });
+                
                 const data = await response.json();
                 
+                // Clear progress timers
+                progressTimers.forEach(timer => clearTimeout(timer));
+                
                 if (data.status === 'success') {
+                    analyzedUrl.textContent = data.video_url;
                     transcriptText.textContent = data.transcript;
                     analysisText.textContent = data.analysis;
                     result.classList.add('active');
@@ -344,14 +451,24 @@
                     throw new Error(data.message || 'Analysis failed');
                 }
             } catch (err) {
-                error.textContent = `❌ Error: ${err.message}. Please try again.`;
+                // Clear progress timers
+                progressTimers.forEach(timer => clearTimeout(timer));
+                
+                error.textContent = `❌ Error: ${err.message}. Please check the URL and try again.`;
                 error.classList.add('active');
             } finally {
                 loading.classList.remove('active');
                 analyzeBtn.disabled = false;
-                progressText.textContent = 'Step 1/3: Uploading and processing video...';
+                progressText.textContent = 'Step 1/4: Downloading video...';
             }
         }
+        
+        // Allow Enter key to submit
+        document.getElementById('videoUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                analyzeVideo();
+            }
+        });
         
         function copyTranscript() {
             const text = document.getElementById('transcriptText').textContent;
@@ -370,16 +487,16 @@
         function copyBoth() {
             const transcript = document.getElementById('transcriptText').textContent;
             const analysis = document.getElementById('analysisText').textContent;
-            const combined = `AUDIO TRANSCRIPT:\n\n${transcript}\n\n${'='.repeat(80)}\n\nPSYCHOANALYTIC ANALYSIS:\n\n${analysis}`;
+            const url = document.getElementById('analyzedUrl').textContent;
+            const combined = `VIDEO URL: ${url}\n\n${'='.repeat(80)}\n\nAUDIO TRANSCRIPT:\n\n${transcript}\n\n${'='.repeat(80)}\n\nPSYCHOANALYTIC ANALYSIS:\n\n${analysis}`;
             navigator.clipboard.writeText(combined).then(() => {
-                alert('✅ Transcript and Analysis copied to clipboard!');
+                alert('✅ Video URL, Transcript, and Analysis copied to clipboard!');
             });
         }
         
         // Show initial message
         window.addEventListener('load', () => {
-            console.log('🧠 Gemini Video Psychoanalysis with Transcription Ready');
-            console.log('Click "Start Psychoanalysis" to begin');
+            console.log('🧠 Gemini Video Psychoanalysis with URL Input Ready');
         });
     </script>
 </body>

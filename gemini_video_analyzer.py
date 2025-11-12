@@ -11,39 +11,37 @@ app = Flask(__name__)
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# Video can be local file or URL
-VIDEO_PATH = os.environ.get('VIDEO_PATH', '/app/video.mp4')
-VIDEO_URL = os.environ.get('VIDEO_URL', '')
-
-def get_video_file():
-    """Get video file path, downloading from URL if necessary"""
+def download_video(video_url):
+    """Download video from URL"""
     
-    # If local file exists, use it
-    if os.path.exists(VIDEO_PATH):
-        print(f"Using local video file: {VIDEO_PATH}")
-        return VIDEO_PATH
+    print(f"Downloading video from URL: {video_url}")
     
-    # If VIDEO_URL is provided, download it
-    if VIDEO_URL:
-        print(f"Downloading video from URL: {VIDEO_URL}")
-        try:
-            response = requests.get(VIDEO_URL, stream=True, timeout=300)
-            response.raise_for_status()
-            
-            # Save to temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            for chunk in response.iter_content(chunk_size=8192):
-                temp_file.write(chunk)
-            temp_file.close()
-            
-            print(f"Video downloaded to: {temp_file.name}")
-            return temp_file.name
-        except Exception as e:
-            print(f"Error downloading video: {e}")
-            raise ValueError(f"Could not download video from URL: {VIDEO_URL}")
-    
-    # If no video available
-    raise ValueError("No video file found. Set VIDEO_PATH or VIDEO_URL environment variable.")
+    try:
+        response = requests.get(video_url, stream=True, timeout=300)
+        response.raise_for_status()
+        
+        # Save to temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        
+        # Download with progress
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded = 0
+        
+        for chunk in response.iter_content(chunk_size=8192):
+            temp_file.write(chunk)
+            downloaded += len(chunk)
+            if total_size > 0:
+                percent = (downloaded / total_size) * 100
+                print(f"Download progress: {percent:.1f}%")
+        
+        temp_file.close()
+        
+        print(f"Video downloaded to: {temp_file.name}")
+        return temp_file.name
+        
+    except Exception as e:
+        print(f"Error downloading video: {e}")
+        raise ValueError(f"Could not download video from URL: {video_url}. Error: {str(e)}")
 
 def transcribe_audio(video_file):
     """Transcribe audio from the video"""
@@ -73,7 +71,7 @@ Transcription:"""
     
     return transcript
 
-def analyze_video(video_file, transcript):
+def analyze_video_content(video_file, transcript):
     """Analyze the video using Gemini 2.5-flash with transcript context"""
     
     print("Generating psychoanalytic analysis...")
@@ -117,49 +115,56 @@ Please provide a comprehensive, nuanced analysis that draws on psychoanalytic th
     
     return analysis
 
-def process_video():
-    """Main function to process video: upload, transcribe, and analyze"""
+def process_video(video_url):
+    """Main function to process video: download, upload, transcribe, and analyze"""
     
     print("Starting video processing...")
     
-    # Get video file
-    video_path = get_video_file()
+    # Download video from URL
+    video_path = download_video(video_url)
     
-    # Upload the video file
-    print("Uploading video to Gemini...")
-    video_file = genai.upload_file(path=video_path, display_name="psychoanalysis_video")
+    try:
+        # Upload the video file to Gemini
+        print("Uploading video to Gemini...")
+        video_file = genai.upload_file(path=video_path, display_name="psychoanalysis_video")
+        
+        print(f"Video uploaded: {video_file.uri}")
+        
+        # Wait for video processing
+        while video_file.state.name == "PROCESSING":
+            print("Waiting for video processing...")
+            time.sleep(5)
+            video_file = genai.get_file(video_file.name)
+        
+        if video_file.state.name == "FAILED":
+            raise ValueError("Video processing failed")
+        
+        print("Video processed successfully")
+        
+        # Transcribe audio
+        transcript = transcribe_audio(video_file)
+        
+        # Analyze video with transcript
+        analysis = analyze_video_content(video_file, transcript)
+        
+        # Clean up
+        genai.delete_file(video_file.name)
+        print("Processing complete")
+        
+        return {
+            "transcript": transcript,
+            "analysis": analysis
+        }
     
-    print(f"Video uploaded: {video_file.uri}")
-    
-    # Wait for video processing
-    while video_file.state.name == "PROCESSING":
-        print("Waiting for video processing...")
-        time.sleep(5)
-        video_file = genai.get_file(video_file.name)
-    
-    if video_file.state.name == "FAILED":
-        raise ValueError("Video processing failed")
-    
-    print("Video processed successfully")
-    
-    # Transcribe audio
-    transcript = transcribe_audio(video_file)
-    
-    # Analyze video with transcript
-    analysis = analyze_video(video_file, transcript)
-    
-    # Clean up
-    genai.delete_file(video_file.name)
-    print("Processing complete")
-    
-    return {
-        "transcript": transcript,
-        "analysis": analysis
-    }
+    finally:
+        # Clean up downloaded file
+        if os.path.exists(video_path):
+            os.remove(video_path)
+            print(f"Cleaned up temporary file: {video_path}")
 
 @app.route('/')
 def home():
-    # Try to serve the HTML interface if it exists
+    # Serve the HTML interface
     try:
         return send_file('index.html')
     except:
@@ -167,24 +172,42 @@ def home():
             "status": "ready",
             "message": "Video psychoanalysis service is running",
             "endpoints": {
-                "analyze": "/analyze",
+                "analyze": "POST /analyze with {\"video_url\": \"...\"}",
                 "health": "/health"
-            },
-            "configuration": {
-                "video_path": VIDEO_PATH if os.path.exists(VIDEO_PATH) else "Not found",
-                "video_url": VIDEO_URL if VIDEO_URL else "Not set"
             }
         })
 
-@app.route('/analyze')
+@app.route('/analyze', methods=['POST'])
 def analyze():
     try:
-        result = process_video()
+        # Get video URL from request
+        data = request.get_json()
+        
+        if not data or 'video_url' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "Please provide 'video_url' in the request body"
+            }), 400
+        
+        video_url = data['video_url']
+        
+        # Validate URL
+        if not video_url.startswith(('http://', 'https://')):
+            return jsonify({
+                "status": "error",
+                "message": "Invalid URL. Must start with http:// or https://"
+            }), 400
+        
+        # Process video
+        result = process_video(video_url)
+        
         return jsonify({
             "status": "success",
+            "video_url": video_url,
             "transcript": result["transcript"],
             "analysis": result["analysis"]
         })
+        
     except Exception as e:
         print(f"Error during analysis: {str(e)}")
         import traceback
@@ -198,7 +221,7 @@ def analyze():
 def health():
     return jsonify({
         "status": "healthy",
-        "video_available": os.path.exists(VIDEO_PATH) or bool(VIDEO_URL)
+        "gemini_api_configured": bool(GOOGLE_API_KEY)
     })
 
 if __name__ == '__main__':
