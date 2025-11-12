@@ -27,7 +27,7 @@ def get_video_file():
     if VIDEO_URL:
         print(f"Downloading video from URL: {VIDEO_URL}")
         try:
-            response = requests.get(VIDEO_URL, stream=True)
+            response = requests.get(VIDEO_URL, stream=True, timeout=300)
             response.raise_for_status()
             
             # Save to temporary file
@@ -45,10 +45,82 @@ def get_video_file():
     # If no video available
     raise ValueError("No video file found. Set VIDEO_PATH or VIDEO_URL environment variable.")
 
-def analyze_video():
-    """Upload and analyze the video using Gemini 2.5-flash"""
+def transcribe_audio(video_file):
+    """Transcribe audio from the video"""
     
-    print("Starting video analysis...")
+    print("Transcribing audio...")
+    
+    # Create the model
+    model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp")
+    
+    # Transcription prompt
+    transcript_prompt = """Please provide a complete, accurate transcription of all spoken audio in this video.
+
+Format:
+- Include all dialogue and speech
+- Use speaker labels if multiple speakers (e.g., "Speaker 1:", "Speaker 2:")
+- Include [pause], [music], [sound effects] for non-speech audio where relevant
+- Preserve natural speech patterns including fillers (um, uh, etc.)
+- Use timestamps for longer videos if helpful
+
+Transcription:"""
+
+    # Generate transcript
+    response = model.generate_content([video_file, transcript_prompt])
+    
+    transcript = response.text.strip()
+    print("Transcription complete")
+    
+    return transcript
+
+def analyze_video(video_file, transcript):
+    """Analyze the video using Gemini 2.5-flash with transcript context"""
+    
+    print("Generating psychoanalytic analysis...")
+    
+    # Create the model
+    model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp")
+    
+    # Psychoanalytic prompt with transcript
+    prompt = f"""You have been provided with a video and its audio transcript below.
+
+AUDIO TRANSCRIPT:
+{transcript}
+
+---
+
+Please provide a deep psychoanalytic analysis of this video, incorporating insights from both the visual content and the spoken words. Consider:
+
+1. **Symbolic Content & Unconscious Manifestations**: What symbolic elements, metaphors, or recurring patterns appear in both visual and verbal content? What might they represent from a psychoanalytic perspective (Freudian, Jungian, Lacanian, etc.)?
+
+2. **Emotional Undertones & Affect**: What emotions, moods, or affective states are present in speech patterns, tone, and visual content? What defense mechanisms might be at play (repression, projection, displacement, etc.)?
+
+3. **Interpersonal Dynamics & Object Relations**: If people are present, analyze the relational dynamics through their words and interactions. What attachment styles, transferences, or interpersonal patterns emerge?
+
+4. **Narrative Structure & Dream-Logic**: How do the spoken narrative and visual narrative interact? Are there dream-like qualities, condensation, or displacement of meaning?
+
+5. **The Gaze & Subject Position**: How does the camera position the viewer? What does the verbal content reveal about perspective and subjectivity?
+
+6. **Temporal & Spatial Dimensions**: How are time and space used verbally and visually? What might this reveal about the psyche's relationship to reality, memory, or fantasy?
+
+7. **Repression & the Return of the Repressed**: Are there elements in speech or visuals that seem suppressed or that emerge unexpectedly? What might be "unsaid" or unconscious despite being spoken?
+
+8. **Cultural & Archetypal Resonances**: Are there universal archetypes or culturally specific symbols in language or imagery that connect to collective unconscious themes?
+
+Please provide a comprehensive, nuanced analysis that draws on psychoanalytic theory while remaining grounded in what is actually observable in the video and audible in the transcript."""
+
+    # Generate analysis
+    response = model.generate_content([video_file, prompt])
+    
+    analysis = response.text
+    print("Analysis complete")
+    
+    return analysis
+
+def process_video():
+    """Main function to process video: upload, transcribe, and analyze"""
+    
+    print("Starting video processing...")
     
     # Get video file
     video_path = get_video_file()
@@ -70,39 +142,20 @@ def analyze_video():
     
     print("Video processed successfully")
     
-    # Create the model
-    model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp")
+    # Transcribe audio
+    transcript = transcribe_audio(video_file)
     
-    # Psychoanalytic prompt
-    prompt = """Please provide a deep psychoanalytic analysis of this video. Consider:
-
-1. **Symbolic Content & Unconscious Manifestations**: What symbolic elements, metaphors, or recurring patterns appear? What might they represent from a psychoanalytic perspective (Freudian, Jungian, Lacanian, etc.)?
-
-2. **Emotional Undertones & Affect**: What emotions, moods, or affective states are present? What defense mechanisms might be at play (repression, projection, displacement, etc.)?
-
-3. **Interpersonal Dynamics & Object Relations**: If people are present, analyze the relational dynamics. What attachment styles, transferences, or interpersonal patterns emerge?
-
-4. **Narrative Structure & Dream-Logic**: Does the video follow a narrative? Are there dream-like qualities, condensation, or displacement of meaning?
-
-5. **The Gaze & Subject Position**: How does the camera position the viewer? What does this suggest about voyeurism, identification, or the construction of subjectivity?
-
-6. **Temporal & Spatial Dimensions**: How are time and space used? What might this reveal about the psyche's relationship to reality, memory, or fantasy?
-
-7. **Repression & the Return of the Repressed**: Are there elements that seem suppressed or that emerge unexpectedly? What might be "unsaid" or unconscious?
-
-8. **Cultural & Archetypal Resonances**: Are there universal archetypes or culturally specific symbols that connect to collective unconscious themes?
-
-Please provide a comprehensive, nuanced analysis that draws on psychoanalytic theory while remaining grounded in what is actually observable in the video."""
-
-    # Generate analysis
-    print("Generating psychoanalytic analysis...")
-    response = model.generate_content([video_file, prompt])
+    # Analyze video with transcript
+    analysis = analyze_video(video_file, transcript)
     
     # Clean up
     genai.delete_file(video_file.name)
-    print("Analysis complete")
+    print("Processing complete")
     
-    return response.text
+    return {
+        "transcript": transcript,
+        "analysis": analysis
+    }
 
 @app.route('/')
 def home():
@@ -126,12 +179,16 @@ def home():
 @app.route('/analyze')
 def analyze():
     try:
-        analysis = analyze_video()
+        result = process_video()
         return jsonify({
             "status": "success",
-            "analysis": analysis
+            "transcript": result["transcript"],
+            "analysis": result["analysis"]
         })
     except Exception as e:
+        print(f"Error during analysis: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "status": "error",
             "message": str(e)
