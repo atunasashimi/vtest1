@@ -10,6 +10,7 @@ URL_INPUT_DEPLOYMENT_GUIDE.txt
 COMPLETE_TRANSCRIPT_FIX.txt
 
 *.txt
+*.mp4
 
 # Environment variables
 .env
