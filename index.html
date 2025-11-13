@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Video Psychoanalysis v1.2.1</title>
+    <title>Gemini Video Psychoanalysis v1.3.0</title>
     <style>
         * {
             margin: 0;
@@ -179,6 +179,11 @@
             border-left: 4px solid #ffc107;
         }
         
+        .context-box {
+            background: #f0fff4;
+            border-left: 4px solid #48bb78;
+        }
+        
         .analysis-box {
             background: #f0f8ff;
             border-left: 4px solid #667eea;
@@ -229,7 +234,7 @@
 <body>
     <div class="container">
         <h1>🧠 Video Psychoanalysis</h1>
-        <p class="subtitle">Powered by Google Gemini 2.5-flash <span style="color: #999; font-size: 0.85em;">• v1.2.1</span></p>
+        <p class="subtitle">Powered by Google Gemini 2.5-flash <span style="color: #999; font-size: 0.85em;">• v1.3.0</span></p>
         
         <div class="url-input-section">
             <h3>🔗 Enter Video URL</h3>
@@ -254,7 +259,7 @@
             <div class="spinner"></div>
             <p>🤔 Processing video with Gemini 2.5-flash...</p>
             <p class="progress-text" id="progressText">
-                Step 1/4: Downloading video...
+                Step 1/5: Downloading video...
             </p>
         </div>
         
@@ -270,14 +275,20 @@
             <button class="copy-btn" onclick="copyTranscript()">
                 📋 Copy Transcript
             </button>
+
+            <h2 class="section-title">🎬 Video Context</h2>
+            <div class="result-box context-box" id="contextText"></div>
+            <button class="copy-btn" onclick="copyContext()">
+                📋 Copy Context
+            </button>
             
-            <h2 class="section-title">📊 Psychoanalytic Analysis</h2>
+            <h2 class="section-title">🧠 Psychological Analysis</h2>
             <div class="result-box analysis-box" id="analysisText"></div>
             <button class="copy-btn" onclick="copyAnalysis()">
                 📋 Copy Analysis
             </button>
-            <button class="copy-btn" onclick="copyBoth()">
-                📋 Copy Both
+            <button class="copy-btn" onclick="copyAll()">
+                📋 Copy All
             </button>
         </div>
     </div>
@@ -290,6 +301,7 @@
             const result = document.getElementById('result');
             const error = document.getElementById('error');
             const transcriptText = document.getElementById('transcriptText');
+            const contextText = document.getElementById('contextText');
             const analysisText = document.getElementById('analysisText');
             const analyzedUrl = document.getElementById('analyzedUrl');
             const progressText = document.getElementById('progressText');
@@ -313,9 +325,10 @@
             
             // Simulate progress updates
             const progressSteps = [
-                { time: 10000, text: 'Step 2/4: Uploading to Gemini...' },
-                { time: 30000, text: 'Step 3/4: Transcribing audio...' },
-                { time: 60000, text: 'Step 4/4: Generating psychoanalytic analysis...' }
+                { time: 10000, text: 'Step 2/5: Uploading to Gemini...' },
+                { time: 30000, text: 'Step 3/5: Transcribing audio...' },
+                { time: 60000, text: 'Step 4/5: Analyzing video context...' },
+                { time: 90000, text: 'Step 5/5: Generating psychological analysis...' }
             ];
             
             const progressTimers = progressSteps.map(step => 
@@ -341,6 +354,7 @@
                 if (data.status === 'success') {
                     analyzedUrl.textContent = data.video_url;
                     transcriptText.textContent = data.transcript;
+                    contextText.textContent = data.context;
                     analysisText.textContent = data.analysis;
                     result.classList.add('active');
                 } else {
@@ -355,7 +369,7 @@
             } finally {
                 loading.classList.remove('active');
                 analyzeBtn.disabled = false;
-                progressText.textContent = 'Step 1/4: Downloading video...';
+                progressText.textContent = 'Step 1/5: Downloading video...';
             }
         }
         
@@ -373,6 +387,13 @@
             });
         }
         
+        function copyContext() {
+            const text = document.getElementById('contextText').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ Context copied to clipboard!');
+            });
+        }
+        
         function copyAnalysis() {
             const text = document.getElementById('analysisText').textContent;
             navigator.clipboard.writeText(text).then(() => {
@@ -380,19 +401,20 @@
             });
         }
         
-        function copyBoth() {
+        function copyAll() {
             const transcript = document.getElementById('transcriptText').textContent;
+            const context = document.getElementById('contextText').textContent;
             const analysis = document.getElementById('analysisText').textContent;
             const url = document.getElementById('analyzedUrl').textContent;
-            const combined = `VIDEO URL: ${url}\n\n${'='.repeat(80)}\n\nAUDIO TRANSCRIPT:\n\n${transcript}\n\n${'='.repeat(80)}\n\nPSYCHOANALYTIC ANALYSIS:\n\n${analysis}`;
+            const combined = `VIDEO URL: ${url}\n\n${'='.repeat(80)}\n\nAUDIO TRANSCRIPT:\n\n${transcript}\n\n${'='.repeat(80)}\n\nVIDEO CONTEXT:\n\n${context}\n\n${'='.repeat(80)}\n\nPSYCHOLOGICAL ANALYSIS:\n\n${analysis}`;
             navigator.clipboard.writeText(combined).then(() => {
-                alert('✅ Video URL, Transcript, and Analysis copied to clipboard!');
+                alert('✅ All content copied to clipboard!');
             });
         }
         
         // Show initial message
         window.addEventListener('load', () => {
-            console.log('🧠 Gemini Video Psychoanalysis v1.2.1 with URL Input Ready');
+            console.log('🧠 Gemini Video Psychoanalysis v1.3.0 Ready');
         });
     </script>
 </body>

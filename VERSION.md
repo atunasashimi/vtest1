@@ -12,7 +12,33 @@ Format: `MAJOR.MINOR.PATCH`
 
 ## Version History
 
-### v1.2.1 (Current)
+### v1.3.0 (Current)
+**Type**: MINOR - Processing & Analysis Change
+**Date**: 2024
+
+**Changes**:
+- **Simplified psychoanalytic language**: Analysis now written in accessible, conversational style for emotionally intelligent adults
+- **New Video Context section**: Added separate analysis for setting, mood, number of people, and video purpose
+- **Dual analysis approach**: Split into two separate AI calls:
+  1. Context analysis (observational, descriptive)
+  2. Psychological analysis (insights, patterns, meaning)
+- **Updated prompts**: Rewritten to produce clear, sophisticated prose without heavy jargon
+- **New UI section**: Added "Video Context" display with green styling
+- **Enhanced copy functionality**: New "Copy Context" and "Copy All" buttons
+- **Progress updates**: Changed from 4 to 5 steps to reflect dual analysis
+
+**Files Changed**:
+- `gemini_video_analyzer.py` - Added `get_video_context()`, rewrote `analyze_video_content()`, updated `process_video()`
+- `index.html` - Added context section, updated progress steps, new copy buttons
+
+**User Impact**:
+- More readable, relatable analysis suitable for general audiences
+- Better understanding of video's basic context before diving into psychology
+- Clearer separation between what's observed vs. what's interpreted
+
+---
+
+### v1.2.1
 **Type**: PATCH - Visual Changes
 **Date**: 2024
 
@@ -91,21 +117,21 @@ Format: `MAJOR.MINOR.PATCH`
 ### For Visual/UI Changes (PATCH):
 ```python
 # In gemini_video_analyzer.py
-VERSION = "1.2.2"  # Increment PATCH
+VERSION = "1.3.1"  # Increment PATCH
 
 # In index.html title and subtitle
-<title>Gemini Video Psychoanalysis v1.2.2</title>
-<span>• v1.2.2</span>
+<title>Gemini Video Psychoanalysis v1.3.1</title>
+<span>• v1.3.1</span>
 ```
 
 ### For Processing Changes (MINOR):
 ```python
 # In gemini_video_analyzer.py
-VERSION = "1.3.0"  # Increment MINOR, reset PATCH to 0
+VERSION = "1.4.0"  # Increment MINOR, reset PATCH to 0
 
 # In index.html
-<title>Gemini Video Psychoanalysis v1.3.0</title>
-<span>• v1.3.0</span>
+<title>Gemini Video Psychoanalysis v1.4.0</title>
+<span>• v1.4.0</span>
 ```
 
 ### For Breaking Changes (MAJOR):
@@ -139,6 +165,7 @@ When releasing a new version:
 
 | Version | Type | Description |
 |---------|------|-------------|
+| 1.3.0 | MINOR | Simplified analysis + video context |
 | 1.2.1 | PATCH | Clean UI + version display |
 | 1.2.0 | MINOR | Fix timestamp continuity |
 | 1.1.0 | MINOR | Segmented transcription |
@@ -148,4 +175,4 @@ When releasing a new version:
 
 ## Current Version
 
-**v1.2.1** - Clean interface with semantic versioning
+**v1.3.0** - Accessible psychological insights with video context analysis

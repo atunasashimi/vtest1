@@ -10,7 +10,7 @@ import json
 app = Flask(__name__)
 
 # Version info
-VERSION = "1.2.1"  # Semantic versioning: MAJOR.MINOR.PATCH
+VERSION = "1.3.0"  # Semantic versioning: MAJOR.MINOR.PATCH
 
 # Configure Gemini API
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
@@ -274,14 +274,88 @@ def transcribe_video_in_segments(video_path, segment_duration=240):
             except:
                 pass
 
-def analyze_video_content(video_path, transcript):
-    """Analyze the complete video with full transcript"""
+def get_video_context(video_path, transcript):
+    """Extract basic video context: setting, mood, people, purpose"""
     
-    print("Generating psychoanalytic analysis...")
+    print("Analyzing video context...")
+    
+    # Upload full video for context analysis
+    print("Uploading video for context analysis...")
+    video_file = genai.upload_file(path=video_path, display_name="video_context")
+    
+    while video_file.state.name == "PROCESSING":
+        print("Processing video for context...")
+        time.sleep(5)
+        video_file = genai.get_file(video_file.name)
+    
+    if video_file.state.name == "FAILED":
+        raise ValueError("Video processing failed for context analysis")
+    
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash-exp",
+        generation_config={
+            "max_output_tokens": 2048,
+            "temperature": 0.4,
+        }
+    )
+    
+    # For very long transcripts, provide excerpts
+    if len(transcript) > 30000:
+        third = len(transcript) // 3
+        transcript_excerpt = (
+            transcript[:third] + 
+            "\n\n[...middle section...]\n\n" + 
+            transcript[-third:]
+        )
+    else:
+        transcript_excerpt = transcript
+    
+    prompt = f"""You are analyzing a video to provide clear, observational context about what's happening.
+
+AUDIO TRANSCRIPT:
+{transcript_excerpt}
+
+---
+
+Please describe the following aspects of this video in clear, straightforward language:
+
+**Setting & Environment:**
+Where does this appear to take place? What's the physical environment like? Indoor/outdoor? What can you observe about the location?
+
+**Mood & Atmosphere:**
+What's the overall emotional tone? Is it formal or casual? Tense or relaxed? Serious or lighthearted? What creates this feeling?
+
+**People & Presence:**
+How many people appear in the video? What are their apparent roles or relationships? If no people are visible, note what is shown instead.
+
+**Purpose & Intent:**
+Why does this video seem to exist? What appears to be its intended goal or message? Is it educational, entertainment, documentation, communication, or something else?
+
+Write in a natural, conversational style as if describing the video to someone who hasn't seen it. Be specific and concrete in your observations."""
+
+    try:
+        response = model.generate_content([video_file, prompt])
+        context = response.text
+        print(f"Context analysis complete: {len(context)} characters")
+        
+        # Cleanup
+        genai.delete_file(video_file.name)
+        
+        return context
+        
+    except Exception as e:
+        print(f"Error during context analysis: {e}")
+        genai.delete_file(video_file.name)
+        raise
+
+def analyze_video_content(video_path, transcript):
+    """Generate accessible psychological analysis of the video"""
+    
+    print("Generating psychological analysis...")
     
     # Upload full video for analysis
-    print("Uploading full video for analysis...")
-    video_file = genai.upload_file(path=video_path, display_name="full_video_analysis")
+    print("Uploading full video for psychological analysis...")
+    video_file = genai.upload_file(path=video_path, display_name="video_psych_analysis")
     
     while video_file.state.name == "PROCESSING":
         print("Processing video for analysis...")
@@ -289,7 +363,7 @@ def analyze_video_content(video_path, transcript):
         video_file = genai.get_file(video_file.name)
     
     if video_file.state.name == "FAILED":
-        raise ValueError("Video processing failed for analysis")
+        raise ValueError("Video processing failed for psychological analysis")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
@@ -299,10 +373,9 @@ def analyze_video_content(video_path, transcript):
         }
     )
     
-    # For very long transcripts, provide a summary in the analysis prompt
+    # For very long transcripts, provide strategic excerpts
     if len(transcript) > 30000:
         print(f"Transcript is long ({len(transcript)} chars), using strategic excerpts for analysis...")
-        # Use beginning, middle, and end
         third = len(transcript) // 3
         transcript_for_prompt = (
             transcript[:third] + 
@@ -314,37 +387,55 @@ def analyze_video_content(video_path, transcript):
     else:
         transcript_for_prompt = transcript
     
-    prompt = f"""You have been provided with a video and its complete audio transcript below.
+    prompt = f"""You are a thoughtful psychologist analyzing a video. Your goal is to provide insights that are both sophisticated and accessible—written for a self-aware, emotionally intelligent adult who appreciates nuance but values clarity.
 
 COMPLETE AUDIO TRANSCRIPT:
 {transcript_for_prompt}
 
 ---
 
-Please provide a deep psychoanalytic analysis of this video, incorporating insights from both the visual content and the spoken words. Consider:
+Please provide a psychological analysis that explores:
 
-1. **Symbolic Content & Unconscious Manifestations**: What symbolic elements, metaphors, or recurring patterns appear in both visual and verbal content? What might they represent from a psychoanalytic perspective (Freudian, Jungian, Lacanian, etc.)?
+**1. Emotional Landscape**
+What feelings and emotional states come through in this video? Look at tone of voice, word choices, and visual cues. What might be happening beneath the surface? Are there tensions between what's said and what's felt?
 
-2. **Emotional Undertones & Affect**: What emotions, moods, or affective states are present in speech patterns, tone, and visual content? What defense mechanisms might be at play (repression, projection, displacement, etc.)?
+**2. Patterns of Communication**
+How do people in this video relate to each other (or to the camera/audience)? What communication styles emerge? Are there power dynamics, intimacy, distance, or other relational qualities worth noting?
 
-3. **Interpersonal Dynamics & Object Relations**: If people are present, analyze the relational dynamics through their words and interactions. What attachment styles, transferences, or interpersonal patterns emerge?
+**3. Symbolic Elements & Meaning**
+What images, metaphors, or recurring themes appear? What might they represent beyond their literal meaning? How do visual and verbal elements work together to create meaning?
 
-4. **Narrative Structure & Dream-Logic**: How do the spoken narrative and visual narrative interact? Are there dream-like qualities, condensation, or displacement of meaning?
+**4. Psychological Defenses & Coping**
+Are there signs of how people are managing stress, vulnerability, or difficult emotions? This might include humor, deflection, intellectualization, or other protective strategies we all use.
 
-5. **The Gaze & Subject Position**: How does the camera position the viewer? What does the verbal content reveal about perspective and subjectivity?
+**5. Narrative & Identity**
+What story is being told—either explicitly or implicitly? How do the people in this video seem to see themselves and their situation? What worldview or perspective shapes their experience?
 
-6. **Temporal & Spatial Dimensions**: How are time and space used verbally and visually? What might this reveal about the psyche's relationship to reality, memory, or fantasy?
+**6. Unconscious Themes**
+What goes unsaid but seems important? Are there contradictions, slips, or moments where something unexpected emerges? What patterns might the speakers not be fully aware of?
 
-7. **Repression & the Return of the Repressed**: Are there elements in speech or visuals that seem suppressed or that emerge unexpectedly? What might be "unsaid" or unconscious despite being spoken?
+**7. Cultural & Universal Elements**
+Are there cultural references, shared experiences, or archetypal patterns (like the hero's journey, the struggle for belonging, etc.) that give this video broader resonance?
 
-8. **Cultural & Archetypal Resonances**: Are there universal archetypes or culturally specific symbols in language or imagery that connect to collective unconscious themes?
+**8. Overall Psychological Impression**
+Stepping back, what's the deeper human experience being expressed or explored here? What makes this psychologically meaningful or noteworthy?
 
-Please provide a comprehensive, nuanced analysis that draws on psychoanalytic theory while remaining grounded in what is actually observable in the video and audible in the transcript."""
+---
+
+**Writing Guidelines:**
+- Write in clear, flowing prose—avoid jargon unless you explain it naturally
+- Use specific examples from what you observe
+- Balance intellectual insight with emotional awareness
+- Be respectful and curious, not diagnostic or pathologizing
+- Write as if speaking to an insightful friend, not writing a clinical report
+- When referencing psychological concepts (like projection or attachment), explain them in context rather than assuming the reader knows the technical meaning
+
+Your analysis should feel like a thoughtful conversation about the human dimensions of this video."""
 
     try:
         response = model.generate_content([video_file, prompt])
         analysis = response.text
-        print(f"Analysis complete: {len(analysis)} characters")
+        print(f"Psychological analysis complete: {len(analysis)} characters")
         
         # Cleanup
         genai.delete_file(video_file.name)
@@ -352,12 +443,12 @@ Please provide a comprehensive, nuanced analysis that draws on psychoanalytic th
         return analysis
         
     except Exception as e:
-        print(f"Error during analysis: {e}")
+        print(f"Error during psychological analysis: {e}")
         genai.delete_file(video_file.name)
         raise
 
 def process_video(video_url):
-    """Main processing function with segmented transcription"""
+    """Main processing function with segmented transcription and dual analysis"""
     
     print("Starting video processing with segmented transcription...")
     
@@ -383,6 +474,9 @@ def process_video(video_url):
         # Transcribe in segments
         transcript = transcribe_video_in_segments(video_path, segment_duration)
         
+        # Get video context
+        context = get_video_context(video_path, transcript)
+        
         # Analyze with full video
         analysis = analyze_video_content(video_path, transcript)
         
@@ -391,6 +485,8 @@ def process_video(video_url):
         return {
             "transcript": transcript,
             "transcript_length": len(transcript),
+            "context": context,
+            "context_length": len(context),
             "analysis": analysis,
             "analysis_length": len(analysis),
             "video_duration": duration
@@ -409,11 +505,12 @@ def home():
         return jsonify({
             "status": "ready",
             "version": VERSION,
-            "message": "Video psychoanalysis service with segmented transcription",
+            "message": "Video analysis service with accessible psychological insights",
             "capabilities": {
                 "max_video_length": "60+ minutes",
                 "transcription": "Segmented for complete coverage",
-                "analysis": "Full video psychoanalytic analysis"
+                "context": "Setting, mood, people, and purpose",
+                "analysis": "Accessible psychological insights"
             }
         })
 
@@ -443,10 +540,11 @@ def analyze():
             "video_url": video_url,
             "transcript": result["transcript"],
             "transcript_length": result["transcript_length"],
+            "context": result["context"],
+            "context_length": result["context_length"],
             "analysis": result["analysis"],
             "analysis_length": result["analysis_length"],
-            "video_duration_seconds": result.get("video_duration"),
-            "note": "Complete transcription using segmented approach"
+            "video_duration_seconds": result.get("video_duration")
         })
         
     except Exception as e:
