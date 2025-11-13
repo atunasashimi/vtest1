@@ -59,6 +59,38 @@ def download_video(video_url):
         print(f"Error downloading media: {e}")
         raise ValueError(f"Could not download media from URL: {video_url}. Error: {str(e)}")
 
+def get_mime_type(file_path):
+    """Get MIME type from file extension"""
+    
+    _, ext = os.path.splitext(file_path)
+    ext = ext.lower()
+    
+    # MIME type mapping
+    mime_types = {
+        # Video formats
+        '.mp4': 'video/mp4',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
+        
+        # Audio formats
+        '.mp3': 'audio/mpeg',
+        '.m4a': 'audio/mp4',
+        '.wav': 'audio/wav',
+        '.aac': 'audio/aac',
+        '.flac': 'audio/flac',
+        '.ogg': 'audio/ogg',
+    }
+    
+    mime_type = mime_types.get(ext)
+    if mime_type:
+        print(f"Using MIME type: {mime_type} for {ext}")
+        return mime_type
+    else:
+        # Default to video/mp4 if unknown
+        print(f"Unknown extension {ext}, defaulting to video/mp4")
+        return 'video/mp4'
+
 def is_audio_only(file_path):
     """Detect if file is audio-only (no video stream)"""
     
@@ -251,7 +283,12 @@ def transcribe_video_in_segments(video_path, segment_duration=240, is_audio=None
     if not total_duration:
         # If we can't get duration, process as single file
         print("Processing as single file...")
-        video_file = genai.upload_file(path=video_path, display_name="full_media")
+        mime_type = get_mime_type(video_path)
+        video_file = genai.upload_file(
+            path=video_path, 
+            display_name="full_media",
+            mime_type=mime_type
+        )
         
         while video_file.state.name == "PROCESSING":
             time.sleep(5)
@@ -285,9 +322,14 @@ def transcribe_video_in_segments(video_path, segment_duration=240, is_audio=None
             print(f"\nSegment {i+1}/{num_segments}: {start_time}s - {start_time+duration}s")
             
             if create_video_segment(video_path, start_time, duration, segment_path):
-                # Upload segment to Gemini
+                # Upload segment to Gemini with explicit MIME type
                 print(f"Uploading segment {i+1}...")
-                video_file = genai.upload_file(path=segment_path, display_name=f"segment_{i+1}")
+                mime_type = get_mime_type(segment_path)
+                video_file = genai.upload_file(
+                    path=segment_path, 
+                    display_name=f"segment_{i+1}",
+                    mime_type=mime_type
+                )
                 
                 # Wait for processing
                 while video_file.state.name == "PROCESSING":
@@ -575,7 +617,12 @@ def process_video(video_url):
         
         # OPTIMIZATION #1: Upload full video ONCE for both context and analysis
         print(f"Uploading full {media_type} for context and analysis...")
-        video_file = genai.upload_file(path=video_path, display_name=f"full_{media_type}_analysis")
+        mime_type = get_mime_type(video_path)
+        video_file = genai.upload_file(
+            path=video_path, 
+            display_name=f"full_{media_type}_analysis",
+            mime_type=mime_type
+        )
         
         while video_file.state.name == "PROCESSING":
             print(f"Processing {media_type} for Gemini analysis...")
