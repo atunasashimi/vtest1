@@ -99,7 +99,7 @@ def create_video_segment(video_path, start_time, duration, output_path):
         return False
 
 def transcribe_segment(video_file, segment_num, start_time):
-    """Transcribe a single video segment"""
+    """Transcribe a single video segment with continuous timestamps"""
     
     print(f"Transcribing segment {segment_num} (starting at {start_time}s)...")
     
@@ -117,20 +117,19 @@ def transcribe_segment(video_file, segment_num, start_time):
     
     prompt = f"""Transcribe ALL spoken audio in this video segment.
 
-This segment starts at [{start_minutes:02d}:{start_seconds:02d}] in the full video.
+CRITICAL: This segment is part of a longer video and starts at timestamp [{start_minutes:02d}:{start_seconds:02d}].
 
-Format each line as:
-[MM:SS] Speaker: What they said
+Your timestamps MUST start at [{start_minutes:02d}:{start_seconds:02d}] and count UP from there.
 
-Include:
-- Every word spoken
-- Speaker labels (Speaker 1, Speaker 2, etc.)
-- [pause] for silences over 2 seconds
-- [music], [laughter], [background noise] where relevant
+For example, if this segment starts at [04:00]:
+- First line should be [04:00] or [04:05] (not [00:00])
+- Second line might be [04:15] (not [00:15])
+- Continue counting up: [04:30], [04:45], [05:00], etc.
 
-Adjust timestamps to reflect the actual time in the FULL video (starting from [{start_minutes:02d}:{start_seconds:02d}]).
+Format:
+[MM:SS] Speaker: dialogue
 
-Transcription:"""
+Transcription starting at [{start_minutes:02d}:{start_seconds:02d}]:"""
 
     try:
         response = model.generate_content(
@@ -139,6 +138,19 @@ Transcription:"""
         )
         
         transcript = response.text.strip()
+        
+        # Verify timestamps look correct (basic check)
+        import re
+        timestamps = re.findall(r'\[(\d{1,2}):(\d{2})\]', transcript)
+        if timestamps:
+            first_timestamp = int(timestamps[0][0]) * 60 + int(timestamps[0][1])
+            expected_start = start_time
+            
+            # If timestamps are still starting near 0, post-process them
+            if first_timestamp < 60 and expected_start > 60:
+                print(f"Warning: Timestamps appear to restart. Adjusting...")
+                transcript = adjust_timestamps(transcript, start_time)
+        
         print(f"Segment {segment_num} transcribed: {len(transcript)} chars")
         
         return transcript
@@ -146,6 +158,28 @@ Transcription:"""
     except Exception as e:
         print(f"Error transcribing segment {segment_num}: {e}")
         return f"[Error transcribing segment starting at {start_minutes:02d}:{start_seconds:02d}]"
+
+
+def adjust_timestamps(transcript, offset_seconds):
+    """Adjust timestamps in transcript by adding offset"""
+    
+    import re
+    
+    def replace_timestamp(match):
+        minutes = int(match.group(1))
+        seconds = int(match.group(2))
+        
+        # Add offset
+        total_seconds = (minutes * 60 + seconds) + offset_seconds
+        new_minutes = total_seconds // 60
+        new_seconds = total_seconds % 60
+        
+        return f"[{new_minutes:02d}:{new_seconds:02d}]"
+    
+    # Replace all timestamps [MM:SS]
+    adjusted = re.sub(r'\[(\d{1,2}):(\d{2})\]', replace_timestamp, transcript)
+    
+    return adjusted
 
 def transcribe_video_in_segments(video_path, segment_duration=240):
     """
