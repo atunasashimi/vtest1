@@ -1,0 +1,40 @@
+# Documentation with secrets (keep these local only)
+PROJECT_HANDOFF.txt
+DEPLOY_V1.2.1.txt
+TIMESTAMP_FIX.txt
+SEGMENTED_TRANSCRIPTION_GUIDE.txt
+TRANSCRIPTION_FIX_EXPLAINED.txt
+RAILWAY_FIX_GUIDE.txt
+URL_INPUT_DEPLOYMENT_GUIDE.txt
+COMPLETE_TRANSCRIPT_FIX.txt
+
+# Environment variables
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.log
