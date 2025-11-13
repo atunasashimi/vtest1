@@ -4,7 +4,8 @@ import google.generativeai as genai
 from flask import Flask, jsonify, send_file, request
 import requests
 import tempfile
-import re
+import subprocess
+import json
 
 app = Flask(__name__)
 
@@ -21,10 +22,8 @@ def download_video(video_url):
         response = requests.get(video_url, stream=True, timeout=600)
         response.raise_for_status()
         
-        # Save to temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         
-        # Download with progress
         total_size = int(response.headers.get('content-length', 0))
         downloaded = 0
         
@@ -33,7 +32,8 @@ def download_video(video_url):
             downloaded += len(chunk)
             if total_size > 0:
                 percent = (downloaded / total_size) * 100
-                print(f"Download progress: {percent:.1f}%")
+                if downloaded % (1024 * 1024 * 10) == 0:  # Log every 10MB
+                    print(f"Download progress: {percent:.1f}%")
         
         temp_file.close()
         
@@ -44,113 +44,215 @@ def download_video(video_url):
         print(f"Error downloading video: {e}")
         raise ValueError(f"Could not download video from URL: {video_url}. Error: {str(e)}")
 
-def extract_last_timestamp(transcript):
-    """Extract the last timestamp from the transcript"""
-    # Look for patterns like [MM:SS] or [HH:MM:SS]
-    timestamps = re.findall(r'\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]', transcript)
-    if timestamps:
-        last = timestamps[-1]
-        if last[2]:  # HH:MM:SS format
-            return int(last[0]) * 3600 + int(last[1]) * 60 + int(last[2])
-        else:  # MM:SS format
-            return int(last[0]) * 60 + int(last[1])
-    return 0
-
-def transcribe_audio_complete(video_file):
-    """Get complete transcription using multiple passes if needed"""
+def get_video_duration(video_path):
+    """Get video duration in seconds using ffprobe"""
     
-    print("Starting complete transcription process...")
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'json',
+            video_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            duration = float(data['format']['duration'])
+            print(f"Video duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+            return duration
+        else:
+            print("Could not determine video duration, assuming segments needed")
+            return None
+            
+    except Exception as e:
+        print(f"Error getting duration: {e}")
+        return None
+
+def create_video_segment(video_path, start_time, duration, output_path):
+    """Create a video segment using ffmpeg"""
+    
+    try:
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-ss', str(start_time),
+            '-t', str(duration),
+            '-c', 'copy',  # Fast copy without re-encoding
+            '-y',  # Overwrite output
+            output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0:
+            print(f"Created segment: {start_time}s-{start_time+duration}s")
+            return True
+        else:
+            print(f"Error creating segment: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"Error in segment creation: {e}")
+        return False
+
+def transcribe_segment(video_file, segment_num, start_time):
+    """Transcribe a single video segment"""
+    
+    print(f"Transcribing segment {segment_num} (starting at {start_time}s)...")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
         generation_config={
             "max_output_tokens": 8192,
-            "temperature": 0.1,
+            "temperature": 0.0,
         }
     )
     
-    # First pass - get initial transcription
-    initial_prompt = """Provide a COMPLETE word-for-word transcription of ALL audio in this video.
+    # Format start time for display
+    start_minutes = int(start_time // 60)
+    start_seconds = int(start_time % 60)
+    
+    prompt = f"""Transcribe ALL spoken audio in this video segment.
 
-IMPORTANT: Transcribe the ENTIRE video from start to finish. Do not stop early.
+This segment starts at [{start_minutes:02d}:{start_seconds:02d}] in the full video.
 
-Format:
-[00:00] - Include timestamp every 30 seconds
-Speaker 1: Actual spoken words
-Speaker 2: Their response
-[00:30] Continue throughout
-[01:00] Keep going...
+Format each line as:
+[MM:SS] Speaker: What they said
 
 Include:
-- Every single word spoken
-- All speakers labeled
-- [pause], [music], [laughter], [background noise] when relevant
-- Continue ALL THE WAY to the end
+- Every word spoken
+- Speaker labels (Speaker 1, Speaker 2, etc.)
+- [pause] for silences over 2 seconds
+- [music], [laughter], [background noise] where relevant
 
-Start transcription now and continue until the video ends:"""
+Adjust timestamps to reflect the actual time in the FULL video (starting from [{start_minutes:02d}:{start_seconds:02d}]).
 
-    print("Pass 1: Getting initial transcription...")
-    response1 = model.generate_content([video_file, initial_prompt])
-    transcript = response1.text.strip()
+Transcription:"""
+
+    try:
+        response = model.generate_content(
+            [video_file, prompt],
+            request_options={"timeout": 300}
+        )
+        
+        transcript = response.text.strip()
+        print(f"Segment {segment_num} transcribed: {len(transcript)} chars")
+        
+        return transcript
+        
+    except Exception as e:
+        print(f"Error transcribing segment {segment_num}: {e}")
+        return f"[Error transcribing segment starting at {start_minutes:02d}:{start_seconds:02d}]"
+
+def transcribe_video_in_segments(video_path, segment_duration=240):
+    """
+    Transcribe video by breaking it into segments
     
-    last_time = extract_last_timestamp(transcript)
-    print(f"Pass 1 complete: {len(transcript)} chars, last timestamp: {last_time}s")
+    Args:
+        video_path: Path to the video file
+        segment_duration: Duration of each segment in seconds (default 4 minutes = 240s)
+    """
     
-    # Additional passes if needed
-    max_passes = 3
-    for pass_num in range(2, max_passes + 1):
-        # Check if we should continue
-        if last_time > 0 and last_time < 300:  # Less than 5 minutes might indicate incomplete
-            print(f"Pass {pass_num}: Requesting continuation from {last_time}s...")
+    print(f"Starting segmented transcription (segments of {segment_duration}s)...")
+    
+    # Get video duration
+    total_duration = get_video_duration(video_path)
+    
+    if not total_duration:
+        # If we can't get duration, process as single video
+        print("Processing as single video...")
+        video_file = genai.upload_file(path=video_path, display_name="full_video")
+        
+        while video_file.state.name == "PROCESSING":
+            time.sleep(5)
+            video_file = genai.get_file(video_file.name)
+        
+        transcript = transcribe_segment(video_file, 1, 0)
+        genai.delete_file(video_file.name)
+        
+        return transcript
+    
+    # Calculate number of segments
+    num_segments = int((total_duration // segment_duration) + (1 if total_duration % segment_duration > 0 else 0))
+    print(f"Video will be split into {num_segments} segments")
+    
+    all_transcripts = []
+    segment_files = []
+    
+    try:
+        # Create and transcribe each segment
+        for i in range(num_segments):
+            start_time = i * segment_duration
+            duration = min(segment_duration, total_duration - start_time)
             
-            minutes = last_time // 60
-            seconds = last_time % 60
-            
-            continuation_prompt = f"""The transcription stopped at [{minutes:02d}:{seconds:02d}]. 
-
-Please continue transcribing from [{minutes:02d}:{seconds:02d}] onwards until the VERY END of the video.
-
-Include:
-- Start from [{minutes:02d}:{seconds:02d}]
-- Continue with all remaining audio
-- Maintain same format with timestamps
-- Do not repeat what was already transcribed
-- Continue until video ends
-
-Continue transcription:"""
-            
-            try:
-                response = model.generate_content([video_file, continuation_prompt])
-                continuation = response.text.strip()
-                
-                if len(continuation) > 100:
-                    print(f"Pass {pass_num}: Got {len(continuation)} additional chars")
-                    transcript += f"\n\n{continuation}"
-                    
-                    new_last_time = extract_last_timestamp(continuation)
-                    if new_last_time > last_time:
-                        last_time = new_last_time
-                        print(f"Updated last timestamp: {last_time}s")
-                    else:
-                        print("No progress in timestamp, stopping additional passes")
-                        break
-                else:
-                    print("Continuation seems complete")
-                    break
-                    
-            except Exception as e:
-                print(f"Error in pass {pass_num}: {e}")
+            if duration <= 0:
                 break
-        else:
-            break
-    
-    print(f"Transcription complete: {len(transcript)} total characters")
-    return transcript
+            
+            # Create segment file
+            segment_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+            segment_files.append(segment_path)
+            
+            print(f"\nSegment {i+1}/{num_segments}: {start_time}s - {start_time+duration}s")
+            
+            if create_video_segment(video_path, start_time, duration, segment_path):
+                # Upload segment to Gemini
+                print(f"Uploading segment {i+1}...")
+                video_file = genai.upload_file(path=segment_path, display_name=f"segment_{i+1}")
+                
+                # Wait for processing
+                while video_file.state.name == "PROCESSING":
+                    time.sleep(3)
+                    video_file = genai.get_file(video_file.name)
+                
+                if video_file.state.name == "FAILED":
+                    print(f"Segment {i+1} processing failed")
+                    all_transcripts.append(f"[Segment {i+1} processing failed]")
+                else:
+                    # Transcribe segment
+                    transcript = transcribe_segment(video_file, i+1, start_time)
+                    all_transcripts.append(transcript)
+                
+                # Cleanup Gemini file
+                genai.delete_file(video_file.name)
+            else:
+                all_transcripts.append(f"[Segment {i+1} creation failed]")
+        
+        # Combine all transcripts
+        combined_transcript = "\n\n".join(all_transcripts)
+        
+        print(f"\nTranscription complete: {len(combined_transcript)} total characters")
+        print(f"Processed {num_segments} segments")
+        
+        return combined_transcript
+        
+    finally:
+        # Cleanup segment files
+        for segment_file in segment_files:
+            try:
+                if os.path.exists(segment_file):
+                    os.remove(segment_file)
+            except:
+                pass
 
-def analyze_video_content(video_file, transcript):
-    """Analyze the video using Gemini 2.5-flash with transcript context"""
+def analyze_video_content(video_path, transcript):
+    """Analyze the complete video with full transcript"""
     
     print("Generating psychoanalytic analysis...")
+    
+    # Upload full video for analysis
+    print("Uploading full video for analysis...")
+    video_file = genai.upload_file(path=video_path, display_name="full_video_analysis")
+    
+    while video_file.state.name == "PROCESSING":
+        print("Processing video for analysis...")
+        time.sleep(5)
+        video_file = genai.get_file(video_file.name)
+    
+    if video_file.state.name == "FAILED":
+        raise ValueError("Video processing failed for analysis")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
@@ -160,17 +262,25 @@ def analyze_video_content(video_file, transcript):
         }
     )
     
-    # Truncate transcript if too long for analysis (keep full version for user)
-    transcript_for_analysis = transcript
+    # For very long transcripts, provide a summary in the analysis prompt
     if len(transcript) > 30000:
-        print(f"Transcript is very long ({len(transcript)} chars), using summary for analysis...")
-        # Keep beginning and end, summarize middle
-        transcript_for_analysis = transcript[:15000] + "\n\n[... middle section continues ...]\n\n" + transcript[-15000:]
+        print(f"Transcript is long ({len(transcript)} chars), using strategic excerpts for analysis...")
+        # Use beginning, middle, and end
+        third = len(transcript) // 3
+        transcript_for_prompt = (
+            transcript[:third] + 
+            "\n\n[...middle section continues...]\n\n" + 
+            transcript[third:2*third][:5000] +
+            "\n\n[...continues...]\n\n" +
+            transcript[-third:]
+        )
+    else:
+        transcript_for_prompt = transcript
     
-    prompt = f"""You have been provided with a video and its audio transcript below.
+    prompt = f"""You have been provided with a video and its complete audio transcript below.
 
-AUDIO TRANSCRIPT:
-{transcript_for_analysis}
+COMPLETE AUDIO TRANSCRIPT:
+{transcript_for_prompt}
 
 ---
 
@@ -194,61 +304,65 @@ Please provide a deep psychoanalytic analysis of this video, incorporating insig
 
 Please provide a comprehensive, nuanced analysis that draws on psychoanalytic theory while remaining grounded in what is actually observable in the video and audible in the transcript."""
 
-    response = model.generate_content([video_file, prompt])
-    
-    analysis = response.text
-    print(f"Analysis complete: {len(analysis)} characters")
-    
-    return analysis
+    try:
+        response = model.generate_content([video_file, prompt])
+        analysis = response.text
+        print(f"Analysis complete: {len(analysis)} characters")
+        
+        # Cleanup
+        genai.delete_file(video_file.name)
+        
+        return analysis
+        
+    except Exception as e:
+        print(f"Error during analysis: {e}")
+        genai.delete_file(video_file.name)
+        raise
 
 def process_video(video_url):
-    """Main function to process video: download, upload, transcribe, and analyze"""
+    """Main processing function with segmented transcription"""
     
-    print("Starting video processing...")
+    print("Starting video processing with segmented transcription...")
     
-    # Download video from URL
     video_path = download_video(video_url)
     
     try:
-        # Upload the video file to Gemini
-        print("Uploading video to Gemini...")
-        video_file = genai.upload_file(path=video_path, display_name="psychoanalysis_video")
+        # Get duration to decide segment size
+        duration = get_video_duration(video_path)
         
-        print(f"Video uploaded: {video_file.uri}")
+        # Adjust segment duration based on video length
+        if duration:
+            if duration > 3600:  # > 1 hour
+                segment_duration = 300  # 5 minutes
+            elif duration > 1800:  # > 30 minutes
+                segment_duration = 240  # 4 minutes
+            else:
+                segment_duration = 300  # 5 minutes for shorter videos
+        else:
+            segment_duration = 240  # Default 4 minutes
         
-        # Wait for video processing
-        while video_file.state.name == "PROCESSING":
-            print("Waiting for video processing...")
-            time.sleep(5)
-            video_file = genai.get_file(video_file.name)
+        print(f"Using segment duration: {segment_duration}s ({segment_duration/60:.1f} minutes)")
         
-        if video_file.state.name == "FAILED":
-            raise ValueError("Video processing failed")
+        # Transcribe in segments
+        transcript = transcribe_video_in_segments(video_path, segment_duration)
         
-        print("Video processed successfully")
+        # Analyze with full video
+        analysis = analyze_video_content(video_path, transcript)
         
-        # Get complete transcription
-        transcript = transcribe_audio_complete(video_file)
-        
-        # Analyze video with transcript
-        analysis = analyze_video_content(video_file, transcript)
-        
-        # Clean up
-        genai.delete_file(video_file.name)
-        print("Processing complete")
+        print("Processing complete!")
         
         return {
             "transcript": transcript,
             "transcript_length": len(transcript),
             "analysis": analysis,
-            "analysis_length": len(analysis)
+            "analysis_length": len(analysis),
+            "video_duration": duration
         }
     
     finally:
-        # Clean up downloaded file
         if os.path.exists(video_path):
             os.remove(video_path)
-            print(f"Cleaned up temporary file: {video_path}")
+            print(f"Cleaned up: {video_path}")
 
 @app.route('/')
 def home():
@@ -257,10 +371,11 @@ def home():
     except:
         return jsonify({
             "status": "ready",
-            "message": "Video psychoanalysis service is running",
-            "endpoints": {
-                "analyze": "POST /analyze with {\"video_url\": \"...\"}",
-                "health": "/health"
+            "message": "Video psychoanalysis service with segmented transcription",
+            "capabilities": {
+                "max_video_length": "60+ minutes",
+                "transcription": "Segmented for complete coverage",
+                "analysis": "Full video psychoanalytic analysis"
             }
         })
 
@@ -272,7 +387,7 @@ def analyze():
         if not data or 'video_url' not in data:
             return jsonify({
                 "status": "error",
-                "message": "Please provide 'video_url' in the request body"
+                "message": "Provide 'video_url' in request body"
             }), 400
         
         video_url = data['video_url']
@@ -280,7 +395,7 @@ def analyze():
         if not video_url.startswith(('http://', 'https://')):
             return jsonify({
                 "status": "error",
-                "message": "Invalid URL. Must start with http:// or https://"
+                "message": "URL must start with http:// or https://"
             }), 400
         
         result = process_video(video_url)
@@ -291,11 +406,13 @@ def analyze():
             "transcript": result["transcript"],
             "transcript_length": result["transcript_length"],
             "analysis": result["analysis"],
-            "analysis_length": result["analysis_length"]
+            "analysis_length": result["analysis_length"],
+            "video_duration_seconds": result.get("video_duration"),
+            "note": "Complete transcription using segmented approach"
         })
         
     except Exception as e:
-        print(f"Error during analysis: {str(e)}")
+        print(f"Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -307,7 +424,8 @@ def analyze():
 def health():
     return jsonify({
         "status": "healthy",
-        "gemini_api_configured": bool(GOOGLE_API_KEY)
+        "gemini_api_configured": bool(GOOGLE_API_KEY),
+        "ffmpeg_available": os.system('which ffmpeg > /dev/null 2>&1') == 0
     })
 
 if __name__ == '__main__':

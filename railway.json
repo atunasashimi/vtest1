@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "gunicorn --bind 0.0.0.0:8080 --timeout 300 --workers 1 gemini_video_analyzer:app",
+    "startCommand": "gunicorn --bind 0.0.0.0:8080 --timeout 600 --workers 1 gemini_video_analyzer:app",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
