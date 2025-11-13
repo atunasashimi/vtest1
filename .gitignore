@@ -11,6 +11,7 @@ COMPLETE_TRANSCRIPT_FIX.txt
 
 *.txt
 *.mp4
+*.m4a
 
 # Environment variables
 .env
