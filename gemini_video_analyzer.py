@@ -181,7 +181,7 @@ def transcribe_segment(video_file, segment_num, start_time, is_audio_only=False)
     print(f"Transcribing {media_type} segment {segment_num} (starting at {start_time}s)...")
     
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-exp",
+        model_name="gemini-2.5-flash",
         generation_config={
             "max_output_tokens": 8192,
             "temperature": 0.0,
@@ -381,7 +381,7 @@ def get_video_context(video_file, transcript, is_audio):
     media_type = "audio" if is_audio else "video"
     
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-exp",
+        model_name="gemini-2.5-flash",
         generation_config={
             "max_output_tokens": 2048,
             "temperature": 0.4,
@@ -493,7 +493,7 @@ def analyze_video_content(video_file, transcript, is_audio):
     media_type = "audio" if is_audio else "video"
     
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-exp",
+        model_name="gemini-2.5-flash",
         generation_config={
             "max_output_tokens": 8192,
             "temperature": 0.7,

@@ -13,22 +13,29 @@ Format: `MAJOR.MINOR.PATCH`
 ## Version History
 
 ### v1.4.1 (Current)
-**Type**: PATCH - Performance Optimization
-**Date**: 2024
+**Type**: PATCH - Performance Optimization & Enhancements
+**Date**: 2024-2025
 
 **Changes**:
 - **Performance optimization**: 40-50% faster processing through eliminating redundant uploads
 - **Single video upload**: Full video now uploaded once and reused for both context and analysis
 - **Cached media detection**: `is_audio_only()` called once at start, result passed to functions
-- **Improved logging**: Added media type detection message and upload/cleanup messages
-- **Processing timer**: Added timer to track and display processing duration
+- **Processing timer**: Added timer to track and display processing duration in UI
+- **MIME type support**: Added explicit MIME type detection for all audio/video formats (fixes .m4a uploads)
+- **Model upgrade**: Updated to Gemini 2.5 Flash (from 2.0 Flash Experimental)
+- **Context enhancements**: Added "Names Mentioned" section with frequency tracking
+- **UI improvements**: Changed "Video Context" to "Context" for audio/video inclusivity
+- **Improved logging**: Added media type detection and upload/cleanup messages
 
 **Technical Details**:
-- Modified: `process_video()` - now handles single upload, passes video_file and is_audio to functions
-- Modified: `transcribe_video_in_segments()` - accepts optional `is_audio` parameter
-- Modified: `get_video_context()` - signature changed to accept `video_file` and `is_audio` instead of `video_path`
-- Modified: `analyze_video_content()` - signature changed to accept `video_file` and `is_audio` instead of `video_path`
-- Removed: Redundant video upload logic from `get_video_context()` and `analyze_video_content()`
+- Modified: `process_video()` - Single upload, passes video_file and is_audio to functions
+- Modified: `transcribe_video_in_segments()` - Accepts optional `is_audio` parameter
+- Modified: `get_video_context()` - Signature changed to accept `video_file` and `is_audio`
+- Modified: `analyze_video_content()` - Signature changed to accept `video_file` and `is_audio`
+- Added: `get_mime_type()` - Maps file extensions to proper MIME types
+- Updated: All Gemini API calls to use `gemini-2.5-flash` model
+- Updated: Context prompts to include "Names Mentioned" section
+- Removed: Redundant video uploads from context and analysis functions
 - Removed: Redundant `is_audio_only()` calls from multiple functions
 
 **Performance Impact**:
@@ -37,18 +44,23 @@ Format: `MAJOR.MINOR.PATCH`
 - Upload bandwidth: Reduced by 33% (1 full upload instead of 2)
 
 **Files Changed**:
-- `gemini_video_analyzer.py` - Core optimization changes
+- `gemini_video_analyzer.py` - Core optimizations, MIME types, model update, context enhancements
+- `index.html` - Timer, UI updates, version display
 - `VERSION.md` - This update
 
 **User Impact**:
 - Significantly faster processing times
-- Same quality output
+- Same or better quality output (newer Gemini model)
 - No API changes (backward compatible)
-- Better logging for debugging
+- Better context with name frequency tracking
+- More inclusive UI language
+- .m4a and other audio formats work reliably
 
 **Optimization Details**:
-1. **Optimization #1**: Reuse uploaded video file - video uploaded once in `process_video()`, passed to both `get_video_context()` and `analyze_video_content()`, deleted once at the end
-2. **Optimization #2**: Cache `is_audio_only()` result - detected once at start of `process_video()`, result passed as parameter to all functions
+1. **Optimization #1**: Reuse uploaded video file - uploaded once, passed to both functions, deleted once
+2. **Optimization #2**: Cache `is_audio_only()` result - detected once, passed as parameter
+3. **MIME Type Fix**: Explicit MIME types for all uploads (audio/mp4, audio/mpeg, video/mp4, etc.)
+4. **Model Update**: Gemini 2.5 Flash for better emotion detection and critical thinking
 
 ---
 
@@ -247,7 +259,7 @@ When releasing a new version:
 
 | Version | Type | Description |
 |---------|------|-------------|
-| 1.4.1 | PATCH | Performance optimization (40-50% faster) |
+| 1.4.1 | PATCH | Performance optimization (40-50% faster), Gemini 2.5 Flash, MIME types, name tracking |
 | 1.4.0 | MINOR | Audio file support (.mp3, .m4a, etc.) |
 | 1.3.0 | MINOR | Simplified analysis + video context |
 | 1.2.1 | PATCH | Clean UI + version display |
@@ -259,4 +271,4 @@ When releasing a new version:
 
 ## Current Version
 
-**v1.4.1** - Full audio and video support with optimized performance and accessible psychological insights
+**v1.4.1** - Full audio and video support with optimized performance, Gemini 2.5 Flash, and accessible psychological insights
