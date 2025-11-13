@@ -411,7 +411,10 @@ Why does this video seem to exist? What appears to be its intended goal or messa
 Write in a natural, conversational style as if describing the video to someone who hasn't seen it. Be specific and concrete in your observations."""
 
     try:
-        response = model.generate_content([video_file, prompt])
+        response = model.generate_content(
+            [video_file, prompt],
+            request_options={"timeout": 300}  # 5 minute timeout for context
+        )
         context = response.text
         print(f"Context analysis complete: {len(context)} characters")
         
@@ -422,6 +425,9 @@ Write in a natural, conversational style as if describing the video to someone w
         
     except Exception as e:
         print(f"Error during context analysis: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         genai.delete_file(video_file.name)
         raise
 
@@ -482,7 +488,7 @@ def analyze_video_content(video_path, transcript):
         elements_type = "images, metaphors"
         modality = "visual and verbal"
     
-    prompt = f"""You are a thoughtful psychologist analyzing {media_article}. Your goal is to provide insights that are both sophisticated and accessible—written for a self-aware, emotionally intelligent adult who appreciates nuance but values clarity.
+    prompt = f"""You are a thoughtful psychologist analyzing {media_article}. Your goal is to provide insights that are both sophisticated and accessible--written for a self-aware, emotionally intelligent adult who appreciates nuance but values clarity.
 
 COMPLETE AUDIO TRANSCRIPT:
 {transcript_for_prompt}
@@ -504,7 +510,7 @@ What {elements_type}, or recurring themes appear? What might they represent beyo
 Are there signs of how people are managing stress, vulnerability, or difficult emotions? This might include humor, deflection, intellectualization, or other protective strategies we all use.
 
 **5. Narrative & Identity**
-What story is being told—either explicitly or implicitly? How do the people in this {media_type} seem to see themselves and their situation? What worldview or perspective shapes their experience?
+What story is being told--either explicitly or implicitly? How do the people in this {media_type} seem to see themselves and their situation? What worldview or perspective shapes their experience?
 
 **6. Unconscious Themes**
 What goes unsaid but seems important? Are there contradictions, slips, or moments where something unexpected emerges? What patterns might the speakers not be fully aware of?
@@ -518,7 +524,7 @@ Stepping back, what's the deeper human experience being expressed or explored he
 ---
 
 **Writing Guidelines:**
-- Write in clear, flowing prose—avoid jargon unless you explain it naturally
+- Write in clear, flowing prose--avoid jargon unless you explain it naturally
 - Use specific examples from what you observe
 - Balance intellectual insight with emotional awareness
 - Be respectful and curious, not diagnostic or pathologizing
@@ -528,7 +534,10 @@ Stepping back, what's the deeper human experience being expressed or explored he
 Your analysis should feel like a thoughtful conversation about the human dimensions of this {media_type}."""
 
     try:
-        response = model.generate_content([video_file, prompt])
+        response = model.generate_content(
+            [video_file, prompt],
+            request_options={"timeout": 600}  # 10 minute timeout for analysis
+        )
         analysis = response.text
         print(f"Psychological analysis complete: {len(analysis)} characters")
         
@@ -539,6 +548,9 @@ Your analysis should feel like a thoughtful conversation about the human dimensi
         
     except Exception as e:
         print(f"Error during psychological analysis: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         genai.delete_file(video_file.name)
         raise
 
