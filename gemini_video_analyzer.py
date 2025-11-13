@@ -9,6 +9,9 @@ import json
 
 app = Flask(__name__)
 
+# Version info
+VERSION = "1.2.1"  # Semantic versioning: MAJOR.MINOR.PATCH
+
 # Configure Gemini API
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -405,6 +408,7 @@ def home():
     except:
         return jsonify({
             "status": "ready",
+            "version": VERSION,
             "message": "Video psychoanalysis service with segmented transcription",
             "capabilities": {
                 "max_video_length": "60+ minutes",
@@ -458,6 +462,7 @@ def analyze():
 def health():
     return jsonify({
         "status": "healthy",
+        "version": VERSION,
         "gemini_api_configured": bool(GOOGLE_API_KEY),
         "ffmpeg_available": os.system('which ffmpeg > /dev/null 2>&1') == 0
     })

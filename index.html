@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Video Psychoanalysis</title>
+    <title>Gemini Video Psychoanalysis v1.2.1</title>
     <style>
         * {
             margin: 0;
@@ -40,28 +40,6 @@
             color: #666;
             margin-bottom: 30px;
             font-size: 1.1em;
-        }
-        
-        .info-box {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            padding: 20px;
-            margin-bottom: 30px;
-            border-radius: 5px;
-        }
-        
-        .info-box h3 {
-            color: #667eea;
-            margin-bottom: 10px;
-        }
-        
-        .info-box ul {
-            margin-left: 20px;
-            color: #555;
-        }
-        
-        .info-box li {
-            margin: 8px 0;
         }
 
         .url-input-section {
@@ -227,32 +205,6 @@
         .error.active {
             display: block;
         }
-        
-        .dimensions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-        
-        .dimension {
-            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            border: 1px solid #667eea30;
-        }
-        
-        .dimension-icon {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-        
-        .dimension-title {
-            font-weight: bold;
-            color: #667eea;
-            font-size: 0.9em;
-        }
 
         .progress-text {
             color: #666;
@@ -277,7 +229,7 @@
 <body>
     <div class="container">
         <h1>🧠 Video Psychoanalysis</h1>
-        <p class="subtitle">Powered by Google Gemini 2.5-flash</p>
+        <p class="subtitle">Powered by Google Gemini 2.5-flash <span style="color: #999; font-size: 0.85em;">• v1.2.1</span></p>
         
         <div class="url-input-section">
             <h3>🔗 Enter Video URL</h3>
@@ -296,62 +248,6 @@
                 <strong>Supported:</strong> Google Cloud Storage, Dropbox (dl=1), direct MP4 URLs<br>
                 <strong>Example:</strong> https://storage.googleapis.com/bucket-name/video.mp4
             </div>
-        </div>
-
-        <div class="info-box">
-            <h3>📊 Analysis Includes</h3>
-            <ul>
-                <li><strong>🎤 Audio Transcript:</strong> Complete transcription of all spoken content</li>
-                <li><strong>🧠 Psychoanalytic Analysis:</strong> Deep 8-dimensional analysis incorporating both visual and verbal content</li>
-            </ul>
-        </div>
-        
-        <div class="info-box">
-            <h3>📊 Analysis Dimensions</h3>
-            <div class="dimensions">
-                <div class="dimension">
-                    <div class="dimension-icon">🔮</div>
-                    <div class="dimension-title">Symbolic Content</div>
-                </div>
-                <div class="dimension">
-                    <div class="dimension-icon">💭</div>
-                    <div class="dimension-title">Emotional Affect</div>
-                </div>
-                <div class="dimension">
-                    <div class="dimension-icon">👥</div>
-                    <div class="dimension-title">Interpersonal Dynamics</div>
-                </div>
-                <div class="dimension">
-                    <div class="dimension-icon">📖</div>
-                    <div class="dimension-title">Narrative Structure</div>
-                </div>
-                <div class="dimension">
-                    <div class="dimension-icon">👁️</div>
-                    <div class="dimension-title">The Gaze</div>
-                </div>
-                <div class="dimension">
-                    <div class="dimension-icon">⏰</div>
-                    <div class="dimension-title">Temporal Dimensions</div>
-                </div>
-                <div class="dimension">
-                    <div class="dimension-icon">🔒</div>
-                    <div class="dimension-title">Repression</div>
-                </div>
-                <div class="dimension">
-                    <div class="dimension-icon">🌍</div>
-                    <div class="dimension-title">Cultural Archetypes</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="info-box">
-            <h3>ℹ️ What to Expect</h3>
-            <ul>
-                <li><strong>Processing Time:</strong> 90-180 seconds (includes download, transcription, and analysis)</li>
-                <li><strong>Transcript:</strong> Complete audio transcription with speaker labels</li>
-                <li><strong>Analysis Length:</strong> 1,500-2,500 words</li>
-                <li><strong>Theoretical Approach:</strong> Multi-perspective (Freud, Jung, Lacan)</li>
-            </ul>
         </div>
         
         <div class="loading" id="loading">
@@ -496,7 +392,7 @@
         
         // Show initial message
         window.addEventListener('load', () => {
-            console.log('🧠 Gemini Video Psychoanalysis with URL Input Ready');
+            console.log('🧠 Gemini Video Psychoanalysis v1.2.1 with URL Input Ready');
         });
     </script>
 </body>
