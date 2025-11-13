@@ -10,22 +10,34 @@ import json
 app = Flask(__name__)
 
 # Version info
-VERSION = "1.3.0"  # Semantic versioning: MAJOR.MINOR.PATCH
+VERSION = "1.4.0"  # Semantic versioning: MAJOR.MINOR.PATCH
 
 # Configure Gemini API
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 genai.configure(api_key=GOOGLE_API_KEY)
 
 def download_video(video_url):
-    """Download video from URL"""
+    """Download video or audio file from URL"""
     
-    print(f"Downloading video from URL: {video_url}")
+    print(f"Downloading media from URL: {video_url}")
     
     try:
+        # Detect file extension from URL
+        from urllib.parse import urlparse, unquote
+        parsed = urlparse(video_url)
+        path = unquote(parsed.path)
+        
+        # Extract extension, default to .mp4 if not found
+        _, ext = os.path.splitext(path)
+        if not ext or ext.lower() not in ['.mp4', '.mov', '.avi', '.mkv', '.mp3', '.m4a', '.wav', '.aac', '.flac', '.ogg']:
+            ext = '.mp4'  # Default to video
+        
+        print(f"Detected file extension: {ext}")
+        
         response = requests.get(video_url, stream=True, timeout=600)
         response.raise_for_status()
         
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         
         total_size = int(response.headers.get('content-length', 0))
         downloaded = 0
@@ -40,15 +52,44 @@ def download_video(video_url):
         
         temp_file.close()
         
-        print(f"Video downloaded to: {temp_file.name}")
+        print(f"Media downloaded to: {temp_file.name}")
         return temp_file.name
         
     except Exception as e:
-        print(f"Error downloading video: {e}")
-        raise ValueError(f"Could not download video from URL: {video_url}. Error: {str(e)}")
+        print(f"Error downloading media: {e}")
+        raise ValueError(f"Could not download media from URL: {video_url}. Error: {str(e)}")
+
+def is_audio_only(file_path):
+    """Detect if file is audio-only (no video stream)"""
+    
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_type',
+            '-of', 'json',
+            file_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            has_video = len(data.get('streams', [])) > 0
+            is_audio = not has_video
+            print(f"File type: {'audio-only' if is_audio else 'video'}")
+            return is_audio
+        else:
+            # If we can't detect, assume it has video
+            return False
+            
+    except Exception as e:
+        print(f"Error detecting media type: {e}")
+        return False
 
 def get_video_duration(video_path):
-    """Get video duration in seconds using ffprobe"""
+    """Get media duration in seconds using ffprobe"""
     
     try:
         cmd = [
@@ -64,10 +105,10 @@ def get_video_duration(video_path):
         if result.returncode == 0:
             data = json.loads(result.stdout)
             duration = float(data['format']['duration'])
-            print(f"Video duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+            print(f"Media duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
             return duration
         else:
-            print("Could not determine video duration, assuming segments needed")
+            print("Could not determine media duration, assuming segments needed")
             return None
             
     except Exception as e:
@@ -75,7 +116,7 @@ def get_video_duration(video_path):
         return None
 
 def create_video_segment(video_path, start_time, duration, output_path):
-    """Create a video segment using ffmpeg"""
+    """Create a video or audio segment using ffmpeg"""
     
     try:
         cmd = [
@@ -101,10 +142,11 @@ def create_video_segment(video_path, start_time, duration, output_path):
         print(f"Error in segment creation: {e}")
         return False
 
-def transcribe_segment(video_file, segment_num, start_time):
-    """Transcribe a single video segment with continuous timestamps"""
+def transcribe_segment(video_file, segment_num, start_time, is_audio_only=False):
+    """Transcribe a single video or audio segment with continuous timestamps"""
     
-    print(f"Transcribing segment {segment_num} (starting at {start_time}s)...")
+    media_type = "audio" if is_audio_only else "video"
+    print(f"Transcribing {media_type} segment {segment_num} (starting at {start_time}s)...")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
@@ -118,9 +160,9 @@ def transcribe_segment(video_file, segment_num, start_time):
     start_minutes = int(start_time // 60)
     start_seconds = int(start_time % 60)
     
-    prompt = f"""Transcribe ALL spoken audio in this video segment.
+    prompt = f"""Transcribe ALL spoken audio in this {media_type} segment.
 
-CRITICAL: This segment is part of a longer video and starts at timestamp [{start_minutes:02d}:{start_seconds:02d}].
+CRITICAL: This segment is part of a longer {media_type} and starts at timestamp [{start_minutes:02d}:{start_seconds:02d}].
 
 Your timestamps MUST start at [{start_minutes:02d}:{start_seconds:02d}] and count UP from there.
 
@@ -186,35 +228,41 @@ def adjust_timestamps(transcript, offset_seconds):
 
 def transcribe_video_in_segments(video_path, segment_duration=240):
     """
-    Transcribe video by breaking it into segments
+    Transcribe video or audio by breaking it into segments
     
     Args:
-        video_path: Path to the video file
+        video_path: Path to the media file
         segment_duration: Duration of each segment in seconds (default 4 minutes = 240s)
     """
     
     print(f"Starting segmented transcription (segments of {segment_duration}s)...")
     
-    # Get video duration
+    # Detect if audio-only
+    is_audio = is_audio_only(video_path)
+    
+    # Get file extension for segments
+    _, ext = os.path.splitext(video_path)
+    
+    # Get media duration
     total_duration = get_video_duration(video_path)
     
     if not total_duration:
-        # If we can't get duration, process as single video
-        print("Processing as single video...")
-        video_file = genai.upload_file(path=video_path, display_name="full_video")
+        # If we can't get duration, process as single file
+        print("Processing as single file...")
+        video_file = genai.upload_file(path=video_path, display_name="full_media")
         
         while video_file.state.name == "PROCESSING":
             time.sleep(5)
             video_file = genai.get_file(video_file.name)
         
-        transcript = transcribe_segment(video_file, 1, 0)
+        transcript = transcribe_segment(video_file, 1, 0, is_audio)
         genai.delete_file(video_file.name)
         
         return transcript
     
     # Calculate number of segments
     num_segments = int((total_duration // segment_duration) + (1 if total_duration % segment_duration > 0 else 0))
-    print(f"Video will be split into {num_segments} segments")
+    print(f"Media will be split into {num_segments} segments")
     
     all_transcripts = []
     segment_files = []
@@ -228,8 +276,8 @@ def transcribe_video_in_segments(video_path, segment_duration=240):
             if duration <= 0:
                 break
             
-            # Create segment file
-            segment_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+            # Create segment file with proper extension
+            segment_path = tempfile.NamedTemporaryFile(delete=False, suffix=ext).name
             segment_files.append(segment_path)
             
             print(f"\nSegment {i+1}/{num_segments}: {start_time}s - {start_time+duration}s")
@@ -248,8 +296,8 @@ def transcribe_video_in_segments(video_path, segment_duration=240):
                     print(f"Segment {i+1} processing failed")
                     all_transcripts.append(f"[Segment {i+1} processing failed]")
                 else:
-                    # Transcribe segment
-                    transcript = transcribe_segment(video_file, i+1, start_time)
+                    # Transcribe segment with audio flag
+                    transcript = transcribe_segment(video_file, i+1, start_time, is_audio)
                     all_transcripts.append(transcript)
                 
                 # Cleanup Gemini file
@@ -275,21 +323,25 @@ def transcribe_video_in_segments(video_path, segment_duration=240):
                 pass
 
 def get_video_context(video_path, transcript):
-    """Extract basic video context: setting, mood, people, purpose"""
+    """Extract basic video/audio context: setting, mood, people, purpose"""
     
-    print("Analyzing video context...")
+    print("Analyzing media context...")
     
-    # Upload full video for context analysis
-    print("Uploading video for context analysis...")
-    video_file = genai.upload_file(path=video_path, display_name="video_context")
+    # Detect media type
+    is_audio = is_audio_only(video_path)
+    media_type = "audio" if is_audio else "video"
+    
+    # Upload full file for context analysis
+    print(f"Uploading {media_type} for context analysis...")
+    video_file = genai.upload_file(path=video_path, display_name=f"{media_type}_context")
     
     while video_file.state.name == "PROCESSING":
-        print("Processing video for context...")
+        print("Processing media for context...")
         time.sleep(5)
         video_file = genai.get_file(video_file.name)
     
     if video_file.state.name == "FAILED":
-        raise ValueError("Video processing failed for context analysis")
+        raise ValueError(f"{media_type.capitalize()} processing failed for context analysis")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
@@ -310,7 +362,32 @@ def get_video_context(video_path, transcript):
     else:
         transcript_excerpt = transcript
     
-    prompt = f"""You are analyzing a video to provide clear, observational context about what's happening.
+    # Adjust prompt based on media type
+    if is_audio:
+        prompt = f"""You are analyzing an audio recording to provide clear, observational context about what's happening.
+
+AUDIO TRANSCRIPT:
+{transcript_excerpt}
+
+---
+
+Please describe the following aspects of this audio in clear, straightforward language:
+
+**Setting & Environment:**
+Based on the audio and content, where does this appear to take place? What's the acoustic environment like? Are there background sounds or music? What clues suggest the location or context?
+
+**Mood & Atmosphere:**
+What's the overall emotional tone? Is it formal or casual? Tense or relaxed? Serious or lighthearted? What creates this feeling?
+
+**People & Presence:**
+How many speakers are there? What are their apparent roles or relationships? What can you infer about them from their voices and manner of speaking?
+
+**Purpose & Intent:**
+Why does this audio seem to exist? What appears to be its intended goal or message? Is it educational, entertainment, documentation, conversation, or something else?
+
+Write in a natural, conversational style as if describing the audio to someone who hasn't heard it. Be specific and concrete in your observations."""
+    else:
+        prompt = f"""You are analyzing a video to provide clear, observational context about what's happening.
 
 AUDIO TRANSCRIPT:
 {transcript_excerpt}
@@ -349,21 +426,25 @@ Write in a natural, conversational style as if describing the video to someone w
         raise
 
 def analyze_video_content(video_path, transcript):
-    """Generate accessible psychological analysis of the video"""
+    """Generate accessible psychological analysis of the video or audio"""
     
     print("Generating psychological analysis...")
     
-    # Upload full video for analysis
-    print("Uploading full video for psychological analysis...")
-    video_file = genai.upload_file(path=video_path, display_name="video_psych_analysis")
+    # Detect media type
+    is_audio = is_audio_only(video_path)
+    media_type = "audio" if is_audio else "video"
+    
+    # Upload full file for analysis
+    print(f"Uploading full {media_type} for psychological analysis...")
+    video_file = genai.upload_file(path=video_path, display_name=f"{media_type}_psych_analysis")
     
     while video_file.state.name == "PROCESSING":
-        print("Processing video for analysis...")
+        print("Processing media for analysis...")
         time.sleep(5)
         video_file = genai.get_file(video_file.name)
     
     if video_file.state.name == "FAILED":
-        raise ValueError("Video processing failed for psychological analysis")
+        raise ValueError(f"{media_type.capitalize()} processing failed for psychological analysis")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
@@ -387,7 +468,21 @@ def analyze_video_content(video_path, transcript):
     else:
         transcript_for_prompt = transcript
     
-    prompt = f"""You are a thoughtful psychologist analyzing a video. Your goal is to provide insights that are both sophisticated and accessible—written for a self-aware, emotionally intelligent adult who appreciates nuance but values clarity.
+    # Adjust prompt based on media type
+    if is_audio:
+        visual_guidance = "Focus on what you can hear: tone of voice, speech patterns, pauses, background sounds, and emotional qualities in the audio."
+        media_article = "an audio"
+        audience_type = "listener"
+        elements_type = "sounds, metaphors"
+        modality = "auditory"
+    else:
+        visual_guidance = "Look at tone of voice, word choices, visual cues, body language, and the interplay between what's said and what's shown visually."
+        media_article = "a video"
+        audience_type = "camera/audience"
+        elements_type = "images, metaphors"
+        modality = "visual and verbal"
+    
+    prompt = f"""You are a thoughtful psychologist analyzing {media_article}. Your goal is to provide insights that are both sophisticated and accessible—written for a self-aware, emotionally intelligent adult who appreciates nuance but values clarity.
 
 COMPLETE AUDIO TRANSCRIPT:
 {transcript_for_prompt}
@@ -397,25 +492,25 @@ COMPLETE AUDIO TRANSCRIPT:
 Please provide a psychological analysis that explores:
 
 **1. Emotional Landscape**
-What feelings and emotional states come through in this video? Look at tone of voice, word choices, and visual cues. What might be happening beneath the surface? Are there tensions between what's said and what's felt?
+What feelings and emotional states come through in this {media_type}? {visual_guidance} What might be happening beneath the surface? Are there tensions between what's said and what's felt?
 
 **2. Patterns of Communication**
-How do people in this video relate to each other (or to the camera/audience)? What communication styles emerge? Are there power dynamics, intimacy, distance, or other relational qualities worth noting?
+How do people in this {media_type} relate to each other (or to the {audience_type})? What communication styles emerge? Are there power dynamics, intimacy, distance, or other relational qualities worth noting?
 
 **3. Symbolic Elements & Meaning**
-What images, metaphors, or recurring themes appear? What might they represent beyond their literal meaning? How do visual and verbal elements work together to create meaning?
+What {elements_type}, or recurring themes appear? What might they represent beyond their literal meaning? How do {modality} elements work together to create meaning?
 
 **4. Psychological Defenses & Coping**
 Are there signs of how people are managing stress, vulnerability, or difficult emotions? This might include humor, deflection, intellectualization, or other protective strategies we all use.
 
 **5. Narrative & Identity**
-What story is being told—either explicitly or implicitly? How do the people in this video seem to see themselves and their situation? What worldview or perspective shapes their experience?
+What story is being told—either explicitly or implicitly? How do the people in this {media_type} seem to see themselves and their situation? What worldview or perspective shapes their experience?
 
 **6. Unconscious Themes**
 What goes unsaid but seems important? Are there contradictions, slips, or moments where something unexpected emerges? What patterns might the speakers not be fully aware of?
 
 **7. Cultural & Universal Elements**
-Are there cultural references, shared experiences, or archetypal patterns (like the hero's journey, the struggle for belonging, etc.) that give this video broader resonance?
+Are there cultural references, shared experiences, or archetypal patterns (like the hero's journey, the struggle for belonging, etc.) that give this {media_type} broader resonance?
 
 **8. Overall Psychological Impression**
 Stepping back, what's the deeper human experience being expressed or explored here? What makes this psychologically meaningful or noteworthy?
@@ -430,7 +525,7 @@ Stepping back, what's the deeper human experience being expressed or explored he
 - Write as if speaking to an insightful friend, not writing a clinical report
 - When referencing psychological concepts (like projection or attachment), explain them in context rather than assuming the reader knows the technical meaning
 
-Your analysis should feel like a thoughtful conversation about the human dimensions of this video."""
+Your analysis should feel like a thoughtful conversation about the human dimensions of this {media_type}."""
 
     try:
         response = model.generate_content([video_file, prompt])
@@ -450,7 +545,7 @@ Your analysis should feel like a thoughtful conversation about the human dimensi
 def process_video(video_url):
     """Main processing function with segmented transcription and dual analysis"""
     
-    print("Starting video processing with segmented transcription...")
+    print("Starting media processing with segmented transcription...")
     
     video_path = download_video(video_url)
     
@@ -458,14 +553,14 @@ def process_video(video_url):
         # Get duration to decide segment size
         duration = get_video_duration(video_path)
         
-        # Adjust segment duration based on video length
+        # Adjust segment duration based on media length
         if duration:
             if duration > 3600:  # > 1 hour
                 segment_duration = 300  # 5 minutes
             elif duration > 1800:  # > 30 minutes
                 segment_duration = 240  # 4 minutes
             else:
-                segment_duration = 300  # 5 minutes for shorter videos
+                segment_duration = 300  # 5 minutes for shorter media
         else:
             segment_duration = 240  # Default 4 minutes
         
@@ -474,10 +569,10 @@ def process_video(video_url):
         # Transcribe in segments
         transcript = transcribe_video_in_segments(video_path, segment_duration)
         
-        # Get video context
+        # Get media context
         context = get_video_context(video_path, transcript)
         
-        # Analyze with full video
+        # Analyze with full media
         analysis = analyze_video_content(video_path, transcript)
         
         print("Processing complete!")
@@ -505,9 +600,10 @@ def home():
         return jsonify({
             "status": "ready",
             "version": VERSION,
-            "message": "Video analysis service with accessible psychological insights",
+            "message": "Video and audio analysis service with accessible psychological insights",
             "capabilities": {
-                "max_video_length": "60+ minutes",
+                "max_media_length": "60+ minutes",
+                "supported_formats": "video (mp4, mov, avi, mkv) and audio (mp3, m4a, wav, aac, flac, ogg)",
                 "transcription": "Segmented for complete coverage",
                 "context": "Setting, mood, people, and purpose",
                 "analysis": "Accessible psychological insights"
@@ -562,7 +658,11 @@ def health():
         "status": "healthy",
         "version": VERSION,
         "gemini_api_configured": bool(GOOGLE_API_KEY),
-        "ffmpeg_available": os.system('which ffmpeg > /dev/null 2>&1') == 0
+        "ffmpeg_available": os.system('which ffmpeg > /dev/null 2>&1') == 0,
+        "supported_formats": {
+            "video": ["mp4", "mov", "avi", "mkv"],
+            "audio": ["mp3", "m4a", "wav", "aac", "flac", "ogg"]
+        }
     })
 
 if __name__ == '__main__':

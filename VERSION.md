@@ -12,7 +12,46 @@ Format: `MAJOR.MINOR.PATCH`
 
 ## Version History
 
-### v1.3.0 (Current)
+### v1.4.0 (Current)
+**Type**: MINOR - New Feature (Audio Support)
+**Date**: 2024
+
+**Changes**:
+- **Audio file support**: System now handles audio-only files (.mp3, .m4a, .wav, .aac, .flac, .ogg)
+- **Smart media detection**: Automatically detects if file is video or audio-only using ffprobe
+- **Adaptive prompts**: Context and analysis prompts adjust based on media type
+- **File extension handling**: Proper detection and preservation of file extensions from URLs
+- **Media-specific language**: 
+  - Audio files: Focus on acoustic environment, speakers, vocal qualities
+  - Video files: Include visual elements, setting, body language
+- **Enhanced /health endpoint**: Now shows supported audio and video formats
+
+**Technical Details**:
+- New function: `is_audio_only()` - detects video stream presence
+- Updated: `download_video()` - extension detection from URL
+- Updated: `transcribe_segment()` - accepts `is_audio_only` parameter
+- Updated: `transcribe_video_in_segments()` - preserves file extensions, passes audio flag
+- Updated: `get_video_context()` - conditional prompts for audio vs video
+- Updated: `analyze_video_content()` - adaptive analysis based on media type
+- Updated: All print statements to use "media" instead of just "video"
+
+**Files Changed**:
+- `gemini_video_analyzer.py` - All core functions updated for audio support
+- `VERSION.md` - This update
+
+**User Impact**:
+- Can now analyze podcasts, interviews, music, voice memos
+- Audio-specific context (acoustic environment, vocal qualities)
+- Appropriate psychological analysis for audio content
+- No changes to existing video functionality
+
+**Supported Formats**:
+- **Video**: .mp4, .mov, .avi, .mkv
+- **Audio**: .mp3, .m4a, .wav, .aac, .flac, .ogg
+
+---
+
+### v1.3.0
 **Type**: MINOR - Processing & Analysis Change
 **Date**: 2024
 
@@ -117,21 +156,21 @@ Format: `MAJOR.MINOR.PATCH`
 ### For Visual/UI Changes (PATCH):
 ```python
 # In gemini_video_analyzer.py
-VERSION = "1.3.1"  # Increment PATCH
+VERSION = "1.4.1"  # Increment PATCH
 
 # In index.html title and subtitle
-<title>Gemini Video Psychoanalysis v1.3.1</title>
-<span>• v1.3.1</span>
+<title>Gemini Video Psychoanalysis v1.4.1</title>
+<span>• v1.4.1</span>
 ```
 
 ### For Processing Changes (MINOR):
 ```python
 # In gemini_video_analyzer.py
-VERSION = "1.4.0"  # Increment MINOR, reset PATCH to 0
+VERSION = "1.5.0"  # Increment MINOR, reset PATCH to 0
 
 # In index.html
-<title>Gemini Video Psychoanalysis v1.4.0</title>
-<span>• v1.4.0</span>
+<title>Gemini Video Psychoanalysis v1.5.0</title>
+<span>• v1.5.0</span>
 ```
 
 ### For Breaking Changes (MAJOR):
@@ -165,6 +204,7 @@ When releasing a new version:
 
 | Version | Type | Description |
 |---------|------|-------------|
+| 1.4.0 | MINOR | Audio file support (.mp3, .m4a, etc.) |
 | 1.3.0 | MINOR | Simplified analysis + video context |
 | 1.2.1 | PATCH | Clean UI + version display |
 | 1.2.0 | MINOR | Fix timestamp continuity |
@@ -175,4 +215,4 @@ When releasing a new version:
 
 ## Current Version
 
-**v1.3.0** - Accessible psychological insights with video context analysis
+**v1.4.0** - Full audio and video support with accessible psychological insights
