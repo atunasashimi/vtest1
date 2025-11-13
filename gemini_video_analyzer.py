@@ -10,7 +10,7 @@ import json
 app = Flask(__name__)
 
 # Version info
-VERSION = "1.4.0"  # Semantic versioning: MAJOR.MINOR.PATCH
+VERSION = "1.4.1"  # Semantic versioning: MAJOR.MINOR.PATCH
 
 # Configure Gemini API
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
@@ -226,19 +226,21 @@ def adjust_timestamps(transcript, offset_seconds):
     
     return adjusted
 
-def transcribe_video_in_segments(video_path, segment_duration=240):
+def transcribe_video_in_segments(video_path, segment_duration=240, is_audio=None):
     """
     Transcribe video or audio by breaking it into segments
     
     Args:
         video_path: Path to the media file
         segment_duration: Duration of each segment in seconds (default 4 minutes = 240s)
+        is_audio: Optional boolean, if provided skips media type detection
     """
     
     print(f"Starting segmented transcription (segments of {segment_duration}s)...")
     
-    # Detect if audio-only
-    is_audio = is_audio_only(video_path)
+    # OPTIMIZATION #2: Use provided is_audio flag to avoid re-detection
+    if is_audio is None:
+        is_audio = is_audio_only(video_path)
     
     # Get file extension for segments
     _, ext = os.path.splitext(video_path)
@@ -322,26 +324,19 @@ def transcribe_video_in_segments(video_path, segment_duration=240):
             except:
                 pass
 
-def get_video_context(video_path, transcript):
-    """Extract basic video/audio context: setting, mood, people, purpose"""
+def get_video_context(video_file, transcript, is_audio):
+    """Extract basic video/audio context: setting, mood, people, purpose
+    
+    Args:
+        video_file: Already uploaded Gemini file object
+        transcript: Full transcript text
+        is_audio: Boolean indicating if media is audio-only
+    """
     
     print("Analyzing media context...")
     
-    # Detect media type
-    is_audio = is_audio_only(video_path)
+    # OPTIMIZATION #1 & #2: Use provided video_file and is_audio flag
     media_type = "audio" if is_audio else "video"
-    
-    # Upload full file for context analysis
-    print(f"Uploading {media_type} for context analysis...")
-    video_file = genai.upload_file(path=video_path, display_name=f"{media_type}_context")
-    
-    while video_file.state.name == "PROCESSING":
-        print("Processing media for context...")
-        time.sleep(5)
-        video_file = genai.get_file(video_file.name)
-    
-    if video_file.state.name == "FAILED":
-        raise ValueError(f"{media_type.capitalize()} processing failed for context analysis")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
@@ -418,9 +413,7 @@ Write in a natural, conversational style as if describing the video to someone w
         context = response.text
         print(f"Context analysis complete: {len(context)} characters")
         
-        # Cleanup
-        genai.delete_file(video_file.name)
-        
+        # OPTIMIZATION #1: Don't delete file here - managed by process_video
         return context
         
     except Exception as e:
@@ -428,29 +421,22 @@ Write in a natural, conversational style as if describing the video to someone w
         print(f"Error type: {type(e).__name__}")
         import traceback
         traceback.print_exc()
-        genai.delete_file(video_file.name)
+        # Don't delete file here - will be cleaned up by process_video
         raise
 
-def analyze_video_content(video_path, transcript):
-    """Generate accessible psychological analysis of the video or audio"""
+def analyze_video_content(video_file, transcript, is_audio):
+    """Generate accessible psychological analysis of the video or audio
+    
+    Args:
+        video_file: Already uploaded Gemini file object
+        transcript: Full transcript text
+        is_audio: Boolean indicating if media is audio-only
+    """
     
     print("Generating psychological analysis...")
     
-    # Detect media type
-    is_audio = is_audio_only(video_path)
+    # OPTIMIZATION #1 & #2: Use provided video_file and is_audio flag
     media_type = "audio" if is_audio else "video"
-    
-    # Upload full file for analysis
-    print(f"Uploading full {media_type} for psychological analysis...")
-    video_file = genai.upload_file(path=video_path, display_name=f"{media_type}_psych_analysis")
-    
-    while video_file.state.name == "PROCESSING":
-        print("Processing media for analysis...")
-        time.sleep(5)
-        video_file = genai.get_file(video_file.name)
-    
-    if video_file.state.name == "FAILED":
-        raise ValueError(f"{media_type.capitalize()} processing failed for psychological analysis")
     
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash-exp",
@@ -541,9 +527,7 @@ Your analysis should feel like a thoughtful conversation about the human dimensi
         analysis = response.text
         print(f"Psychological analysis complete: {len(analysis)} characters")
         
-        # Cleanup
-        genai.delete_file(video_file.name)
-        
+        # OPTIMIZATION #1: Don't delete file here - managed by process_video
         return analysis
         
     except Exception as e:
@@ -551,7 +535,7 @@ Your analysis should feel like a thoughtful conversation about the human dimensi
         print(f"Error type: {type(e).__name__}")
         import traceback
         traceback.print_exc()
-        genai.delete_file(video_file.name)
+        # Don't delete file here - will be cleaned up by process_video
         raise
 
 def process_video(video_url):
@@ -565,6 +549,11 @@ def process_video(video_url):
     video_path = download_video(video_url)
     
     try:
+        # OPTIMIZATION #2: Detect media type ONCE at the start
+        is_audio = is_audio_only(video_path)
+        media_type = "audio" if is_audio else "video"
+        print(f"Media type detected: {media_type}")
+        
         # Get duration to decide segment size
         duration = get_video_duration(video_path)
         
@@ -581,14 +570,29 @@ def process_video(video_url):
         
         print(f"Using segment duration: {segment_duration}s ({segment_duration/60:.1f} minutes)")
         
-        # Transcribe in segments
-        transcript = transcribe_video_in_segments(video_path, segment_duration)
+        # Transcribe in segments (pass is_audio to avoid re-detection)
+        transcript = transcribe_video_in_segments(video_path, segment_duration, is_audio)
         
-        # Get media context
-        context = get_video_context(video_path, transcript)
+        # OPTIMIZATION #1: Upload full video ONCE for both context and analysis
+        print(f"Uploading full {media_type} for context and analysis...")
+        video_file = genai.upload_file(path=video_path, display_name=f"full_{media_type}_analysis")
         
-        # Analyze with full media
-        analysis = analyze_video_content(video_path, transcript)
+        while video_file.state.name == "PROCESSING":
+            print(f"Processing {media_type} for Gemini analysis...")
+            time.sleep(5)
+            video_file = genai.get_file(video_file.name)
+        
+        if video_file.state.name == "FAILED":
+            raise ValueError(f"{media_type.capitalize()} upload failed for analysis")
+        
+        try:
+            # Use the same uploaded file for both analyses (pass is_audio to avoid re-detection)
+            context = get_video_context(video_file, transcript, is_audio)
+            analysis = analyze_video_content(video_file, transcript, is_audio)
+        finally:
+            # Clean up uploaded file
+            print(f"Cleaning up uploaded {media_type} from Gemini...")
+            genai.delete_file(video_file.name)
         
         # Calculate processing time
         end_time = time.time()
