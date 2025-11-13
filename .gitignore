@@ -9,6 +9,8 @@ RAILWAY_FIX_GUIDE.txt
 URL_INPUT_DEPLOYMENT_GUIDE.txt
 COMPLETE_TRANSCRIPT_FIX.txt
 
+*.txt
+
 # Environment variables
 .env
 .env.local
