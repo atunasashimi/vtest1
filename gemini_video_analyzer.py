@@ -419,6 +419,12 @@ What's the overall emotional tone? Is it formal or casual? Tense or relaxed? Ser
 **People & Presence:**
 How many speakers are there? What are their apparent roles or relationships? What can you infer about them from their voices and manner of speaking?
 
+**Names Mentioned:**
+List all names of people mentioned in the audio (not just the speakers, but anyone referenced). For each name, indicate approximately how many times it was mentioned. Format as:
+- Name 1 (mentioned X times)
+- Name 2 (mentioned X times)
+If no names are mentioned, simply note "No specific names mentioned."
+
 **Purpose & Intent:**
 Why does this audio seem to exist? What appears to be its intended goal or message? Is it educational, entertainment, documentation, conversation, or something else?
 
@@ -441,6 +447,12 @@ What's the overall emotional tone? Is it formal or casual? Tense or relaxed? Ser
 
 **People & Presence:**
 How many people appear in the video? What are their apparent roles or relationships? If no people are visible, note what is shown instead.
+
+**Names Mentioned:**
+List all names of people mentioned in the video (both speakers and anyone referenced). For each name, indicate approximately how many times it was mentioned. Format as:
+- Name 1 (mentioned X times)
+- Name 2 (mentioned X times)
+If no names are mentioned, simply note "No specific names mentioned."
 
 **Purpose & Intent:**
 Why does this video seem to exist? What appears to be its intended goal or message? Is it educational, entertainment, documentation, communication, or something else?
