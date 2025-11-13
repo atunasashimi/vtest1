@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Video Psychoanalysis v1.3.0</title>
+    <title>Gemini Video Psychoanalysis v1.4.0</title>
     <style>
         * {
             margin: 0;
@@ -143,6 +143,14 @@
             100% { transform: rotate(360deg); }
         }
         
+        .timer {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+        
         .result {
             display: none;
             margin-top: 30px;
@@ -229,12 +237,22 @@
             margin: 5px 0;
             color: #555;
         }
+
+        .stats-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🧠 Video Psychoanalysis</h1>
-        <p class="subtitle">Powered by Google Gemini 2.5-flash <span style="color: #999; font-size: 0.85em;">• v1.3.0</span></p>
+        <p class="subtitle">Powered by Google Gemini 2.5-flash <span style="color: #999; font-size: 0.85em;">• v1.4.0</span></p>
         
         <div class="url-input-section">
             <h3>🔗 Enter Video URL</h3>
@@ -250,7 +268,7 @@
                 </button>
             </div>
             <div class="example-urls">
-                <strong>Supported:</strong> Google Cloud Storage, Dropbox (dl=1), direct MP4 URLs<br>
+                <strong>Supported:</strong> Google Cloud Storage, Dropbox (dl=1), direct MP4/MP3 URLs<br>
                 <strong>Example:</strong> https://storage.googleapis.com/bucket-name/video.mp4
             </div>
         </div>
@@ -258,6 +276,7 @@
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <p>🤔 Processing video with Gemini 2.5-flash...</p>
+            <div class="timer" id="timer">00:00</div>
             <p class="progress-text" id="progressText">
                 Step 1/5: Downloading video...
             </p>
@@ -267,7 +286,8 @@
         
         <div class="result" id="result">
             <div class="video-info">
-                <p><strong>📹 Analyzed Video:</strong> <span id="analyzedUrl"></span></p>
+                <p><strong>🔹 Analyzed Video:</strong> <span id="analyzedUrl"></span></p>
+                <p><strong>⏱️ Processing Time:</strong> <span id="processingTime"></span></p>
             </div>
 
             <h2 class="section-title">🎤 Audio Transcript</h2>
@@ -294,6 +314,29 @@
     </div>
     
     <script>
+        let timerInterval;
+        let startTime;
+        
+        function startTimer() {
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+        
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+        
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('timer').textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+        
         async function analyzeVideo() {
             const videoUrl = document.getElementById('videoUrl').value.trim();
             const analyzeBtn = document.getElementById('analyzeBtn');
@@ -304,16 +347,18 @@
             const contextText = document.getElementById('contextText');
             const analysisText = document.getElementById('analysisText');
             const analyzedUrl = document.getElementById('analyzedUrl');
+            const processingTime = document.getElementById('processingTime');
             const progressText = document.getElementById('progressText');
+            const timer = document.getElementById('timer');
             
             // Validate URL
             if (!videoUrl) {
-                alert('❌ Please enter a video URL');
+                alert('⚠️ Please enter a video URL');
                 return;
             }
             
             if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
-                alert('❌ URL must start with http:// or https://');
+                alert('⚠️ URL must start with http:// or https://');
                 return;
             }
             
@@ -322,6 +367,10 @@
             loading.classList.add('active');
             result.classList.remove('active');
             error.classList.remove('active');
+            timer.textContent = '00:00';
+            
+            // Start timer
+            startTimer();
             
             // Simulate progress updates
             const progressSteps = [
@@ -348,6 +397,9 @@
                 
                 const data = await response.json();
                 
+                // Stop timer
+                stopTimer();
+                
                 // Clear progress timers
                 progressTimers.forEach(timer => clearTimeout(timer));
                 
@@ -356,15 +408,28 @@
                     transcriptText.textContent = data.transcript;
                     contextText.textContent = data.context;
                     analysisText.textContent = data.analysis;
+                    
+                    // Display processing time
+                    const backendTime = data.processing_time_formatted || 'N/A';
+                    const frontendElapsed = Math.floor((Date.now() - startTime) / 1000);
+                    const frontendMinutes = Math.floor(frontendElapsed / 60);
+                    const frontendSeconds = frontendElapsed % 60;
+                    const frontendTime = `${frontendMinutes}m ${frontendSeconds}s`;
+                    
+                    processingTime.innerHTML = `${backendTime} <span class="stats-badge">Total: ${frontendTime}</span>`;
+                    
                     result.classList.add('active');
                 } else {
                     throw new Error(data.message || 'Analysis failed');
                 }
             } catch (err) {
+                // Stop timer
+                stopTimer();
+                
                 // Clear progress timers
                 progressTimers.forEach(timer => clearTimeout(timer));
                 
-                error.textContent = `❌ Error: ${err.message}. Please check the URL and try again.`;
+                error.textContent = `⚠️ Error: ${err.message}. Please check the URL and try again.`;
                 error.classList.add('active');
             } finally {
                 loading.classList.remove('active');
@@ -406,7 +471,8 @@
             const context = document.getElementById('contextText').textContent;
             const analysis = document.getElementById('analysisText').textContent;
             const url = document.getElementById('analyzedUrl').textContent;
-            const combined = `VIDEO URL: ${url}\n\n${'='.repeat(80)}\n\nAUDIO TRANSCRIPT:\n\n${transcript}\n\n${'='.repeat(80)}\n\nVIDEO CONTEXT:\n\n${context}\n\n${'='.repeat(80)}\n\nPSYCHOLOGICAL ANALYSIS:\n\n${analysis}`;
+            const time = document.getElementById('processingTime').textContent;
+            const combined = `VIDEO URL: ${url}\nPROCESSING TIME: ${time}\n\n${'='.repeat(80)}\n\nAUDIO TRANSCRIPT:\n\n${transcript}\n\n${'='.repeat(80)}\n\nVIDEO CONTEXT:\n\n${context}\n\n${'='.repeat(80)}\n\nPSYCHOLOGICAL ANALYSIS:\n\n${analysis}`;
             navigator.clipboard.writeText(combined).then(() => {
                 alert('✅ All content copied to clipboard!');
             });
@@ -414,7 +480,7 @@
         
         // Show initial message
         window.addEventListener('load', () => {
-            console.log('🧠 Gemini Video Psychoanalysis v1.3.0 Ready');
+            console.log('🧠 Gemini Video Psychoanalysis v1.4.0 Ready');
         });
     </script>
 </body>

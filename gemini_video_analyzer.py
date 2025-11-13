@@ -557,6 +557,9 @@ Your analysis should feel like a thoughtful conversation about the human dimensi
 def process_video(video_url):
     """Main processing function with segmented transcription and dual analysis"""
     
+    import time
+    start_time = time.time()
+    
     print("Starting media processing with segmented transcription...")
     
     video_path = download_video(video_url)
@@ -587,7 +590,13 @@ def process_video(video_url):
         # Analyze with full media
         analysis = analyze_video_content(video_path, transcript)
         
-        print("Processing complete!")
+        # Calculate processing time
+        end_time = time.time()
+        processing_time = end_time - start_time
+        minutes = int(processing_time // 60)
+        seconds = int(processing_time % 60)
+        
+        print(f"Processing complete! Total time: {minutes}m {seconds}s")
         
         return {
             "transcript": transcript,
@@ -596,7 +605,9 @@ def process_video(video_url):
             "context_length": len(context),
             "analysis": analysis,
             "analysis_length": len(analysis),
-            "video_duration": duration
+            "video_duration": duration,
+            "processing_time_seconds": int(processing_time),
+            "processing_time_formatted": f"{minutes}m {seconds}s"
         }
     
     finally:
@@ -652,7 +663,9 @@ def analyze():
             "context_length": result["context_length"],
             "analysis": result["analysis"],
             "analysis_length": result["analysis_length"],
-            "video_duration_seconds": result.get("video_duration")
+            "video_duration_seconds": result.get("video_duration"),
+            "processing_time_seconds": result.get("processing_time_seconds"),
+            "processing_time_formatted": result.get("processing_time_formatted")
         })
         
     except Exception as e:
